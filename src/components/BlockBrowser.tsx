@@ -8,12 +8,12 @@ const QUICK_SLOTS = 9
 const FAVORITES_KEY = 'sf_quickbar'
 
 const CATEGORIES = [
-  { key: 'all', label: '全部', icon: '📦' },
-  { key: 'building', label: '建筑', icon: '🧱' },
-  { key: 'natural', label: '自然', icon: '🌿' },
-  { key: 'redstone', label: '红石', icon: '⚡' },
-  { key: 'decoration', label: '装饰', icon: '🎨' },
-  { key: 'utility', label: '功能', icon: '🔧' },
+  { key: 'all', label: '全部' },
+  { key: 'building', label: '建筑方块' },
+  { key: 'natural', label: '自然方块' },
+  { key: 'redstone', label: '红石元件' },
+  { key: 'decoration', label: '装饰方块' },
+  { key: 'utility', label: '功能方块' },
 ] as const
 
 function loadFavorites(): BlockData[] {
@@ -96,37 +96,38 @@ export function BlockBrowser() {
   }
 
   return (
-    <div className="sf-block-browser">
-      <div className="sf-header">
-        <span className="sf-title">方块选择</span>
-        <span className="sf-count">{BLOCKS.length}</span>
+    <div className="mc-browser">
+      <div className="mc-titlebar">
+        <div className="mc-title">选择方块</div>
+        <div className="mc-title-count">{BLOCKS.length} 个方块</div>
       </div>
 
-      <div className="sf-quickbar-section">
-        <div className="sf-quickbar-label">快捷栏 · 1-9</div>
-        <div className="sf-quickbar">
+      <div className="mc-hotbar-container">
+        <div className="mc-hotbar-label">快捷栏</div>
+        <div className="mc-hotbar">
           {favorites.map((block, idx) => {
             const isActive = selectedBlock?.id === block.id
             const textureFailed = failedTextures.has(block.id)
             return (
               <div
                 key={block.id}
-                className={`sf-slot ${isActive ? 'active' : ''}`}
+                className={`mc-slot ${isActive ? 'active' : ''}`}
                 onClick={() => handleSlotClick(block)}
                 onContextMenu={(e) => handleSlotRightClick(e, idx)}
                 title={`${block.nameZh} [${idx + 1}]`}
               >
-                <span className="sf-slot-num">{idx + 1}</span>
-                <div className="sf-slot-icon">
+                <span className="mc-slot-key">{idx + 1}</span>
+                <div className="mc-slot-inner">
                   {!textureFailed && (
                     <img
                       src={getMCTextureURL(block.id)}
                       alt=""
+                      className="mc-slot-img"
                       onError={() => handleTextureError(block.id)}
                       draggable={false}
                     />
                   )}
-                  <div className="sf-slot-color" style={{ backgroundColor: block.color }} />
+                  <div className="mc-slot-bg" style={{ backgroundColor: block.color }} />
                 </div>
               </div>
             )
@@ -135,33 +136,33 @@ export function BlockBrowser() {
       </div>
 
       {showPicker !== null && (
-        <div className="sf-picker-overlay" onClick={() => setShowPicker(null)}>
-          <div className="sf-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
-            <div className="sf-picker-header">
-              <span>选择方块 - 槽位 {showPicker + 1}</span>
-              <button className="sf-picker-close" onClick={() => setShowPicker(null)}>✕</button>
+        <div className="mc-picker-overlay" onClick={() => setShowPicker(null)}>
+          <div className="mc-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
+            <div className="mc-picker-title">
+              <span>替换槽位 {showPicker + 1}</span>
+              <button className="mc-picker-x" onClick={() => setShowPicker(null)}>×</button>
             </div>
-            <div className="sf-picker-search">
+            <div className="mc-picker-search">
               <input
                 type="text"
-                placeholder="搜索..."
+                placeholder="输入搜索..."
                 value={searchQuery}
-                onChange={e => e.stopPropagation()}
+                onChange={e => {}}
                 autoFocus
               />
             </div>
-            <div className="sf-picker-grid">
-              {(searchQuery ? searchBlocks(searchQuery) : BLOCKS.slice(0, 100)).map(block => (
+            <div className="mc-picker-items">
+              {(searchQuery ? searchBlocks(searchQuery) : BLOCKS.slice(0, 80)).map(block => (
                 <div
                   key={block.id}
-                  className="sf-picker-item"
+                  className="mc-picker-item"
                   onClick={() => handlePickBlock(block)}
                 >
-                  <div className="sf-picker-icon">
+                  <div className="mc-picker-icon">
                     <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
                     <div style={{ backgroundColor: block.color }} />
                   </div>
-                  <span className="sf-picker-name">{block.nameZh}</span>
+                  <span>{block.nameZh}</span>
                 </div>
               ))}
             </div>
@@ -169,11 +170,8 @@ export function BlockBrowser() {
         </div>
       )}
 
-      <div className="sf-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="11" cy="11" r="8"/>
-          <path d="M21 21l-4.35-4.35"/>
-        </svg>
+      <div className="mc-search">
+        <span className="mc-search-icon">🔍</span>
         <input
           type="text"
           placeholder="搜索方块..."
@@ -182,28 +180,27 @@ export function BlockBrowser() {
         />
       </div>
 
-      <div className="sf-categories">
+      <div className="mc-tabs">
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
-            className={`sf-cat ${activeCategory === cat.key && !searchQuery ? 'active' : ''}`}
+            className={`mc-tab ${activeCategory === cat.key && !searchQuery ? 'active' : ''}`}
             onClick={() => { setActiveCategory(cat.key); setSearchQuery('') }}
           >
-            <span>{cat.icon}</span>
-            <span>{cat.label}</span>
+            {cat.label}
           </button>
         ))}
       </div>
 
-      <div className="sf-grid">
-        {filteredBlocks.slice(0, 150).map(block => (
+      <div className="mc-grid">
+        {filteredBlocks.slice(0, 120).map(block => (
           <div
             key={block.id}
-            className={`sf-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
+            className={`mc-item ${selectedBlock?.id === block.id ? 'selected' : ''}`}
             onClick={() => setSelectedBlock(block)}
             title={block.nameZh}
           >
-            <div className="sf-block-icon">
+            <div className="mc-item-inner">
               {!failedTextures.has(block.id) && (
                 <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
               )}
@@ -212,122 +209,114 @@ export function BlockBrowser() {
           </div>
         ))}
         {filteredBlocks.length === 0 && (
-          <div className="sf-empty">未找到方块</div>
+          <div className="mc-empty">未找到方块</div>
         )}
       </div>
 
       {selectedBlock && (
-        <div className="sf-current">
-          <div className="sf-current-icon">
+        <div className="mc-footer">
+          <div className="mc-footer-icon">
             {!failedTextures.has(selectedBlock.id) && (
               <img src={getMCTextureURL(selectedBlock.id)} alt="" onError={() => handleTextureError(selectedBlock.id)} />
             )}
             <div style={{ backgroundColor: failedTextures.has(selectedBlock.id) ? selectedBlock.color : 'transparent' }} />
           </div>
-          <div className="sf-current-info">
-            <div className="sf-current-name">{selectedBlock.nameZh}</div>
-            <div className="sf-current-id">{selectedBlock.id.replace('minecraft:', '')}</div>
+          <div className="mc-footer-info">
+            <div className="mc-footer-name">{selectedBlock.nameZh}</div>
+            <div className="mc-footer-id">{selectedBlock.id.replace('minecraft:', '')}</div>
           </div>
-          <button className="sf-add-btn" onClick={handleAddToQuickbar} title="添加到快捷栏">
-            ★
-          </button>
+          <button className="mc-star" onClick={handleAddToQuickbar} title="加入快捷栏">★</button>
         </div>
       )}
 
       <style>{`
-        .sf-block-browser {
+        .mc-browser {
           display: flex;
           flex-direction: column;
           height: 100%;
-          background: #1a1a1a;
-          color: #fff;
-          font-family: 'Minecraft', 'Segoe UI', sans-serif;
+          background: #c6c6c6;
+          font-family: 'Minecraft', 'Noto Sans', sans-serif;
           user-select: none;
         }
 
-        .sf-header {
+        .mc-titlebar {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 12px 16px;
-          background: #2d2d2d;
-          border-bottom: 1px solid #3d3d3d;
+          padding: 8px 12px;
+          background: linear-gradient(to bottom, #3b3b3b 0%, #1e1e1e 100%);
+          border-bottom: 2px solid #232323;
         }
 
-        .sf-title {
+        .mc-title {
           font-size: 14px;
-          font-weight: 600;
+          font-weight: bold;
           color: #fff;
-          letter-spacing: 0.5px;
+          text-shadow: 1px 1px 0 #3f3f3f;
         }
 
-        .sf-count {
+        .mc-title-count {
           font-size: 11px;
-          padding: 2px 8px;
-          background: #4a4a4a;
-          border-radius: 10px;
-          color: #aaa;
+          color: #888;
         }
 
-        .sf-quickbar-section {
-          padding: 12px 16px;
-          background: #252525;
-          border-bottom: 1px solid #3d3d3d;
+        .mc-hotbar-container {
+          padding: 10px 12px;
+          background: #1e1e1e;
+          border-bottom: 2px solid #373737;
         }
 
-        .sf-quickbar-label {
+        .mc-hotbar-label {
           font-size: 10px;
+          color: #666;
+          margin-bottom: 6px;
           text-transform: uppercase;
           letter-spacing: 1px;
-          color: #888;
-          margin-bottom: 8px;
-          font-weight: 600;
         }
 
-        .sf-quickbar {
+        .mc-hotbar {
           display: flex;
-          gap: 4px;
+          gap: 2px;
+          justify-content: center;
         }
 
-        .sf-slot {
+        .mc-slot {
           position: relative;
-          width: 42px;
-          height: 42px;
-          background: #3a3a3a;
-          border: 2px solid #555;
-          border-radius: 4px;
+          width: 40px;
+          height: 40px;
+          background: #2d2d2d;
+          border: 3px solid;
+          border-color: #373737 #1a1a1a #1a1a1a #373737;
           cursor: pointer;
-          overflow: hidden;
-          transition: transform 0.1s, border-color 0.1s;
+          transition: filter 0.1s;
         }
 
-        .sf-slot:hover {
-          border-color: #aaa;
-          transform: scale(1.08);
+        .mc-slot:hover {
+          filter: brightness(1.2);
         }
 
-        .sf-slot.active {
-          border-color: #5ca8d4;
-          box-shadow: 0 0 8px rgba(92, 168, 212, 0.5);
+        .mc-slot.active {
+          border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4;
         }
 
-        .sf-slot-num {
+        .mc-slot-key {
           position: absolute;
-          top: 2px;
+          top: 1px;
           left: 3px;
           font-size: 10px;
           font-weight: bold;
           color: #fff;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.9);
-          z-index: 2;
+          text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+          z-index: 3;
+          pointer-events: none;
         }
 
-        .sf-slot-icon {
+        .mc-slot-inner {
           position: absolute;
           inset: 0;
         }
 
-        .sf-slot-icon img {
+        .mc-slot-img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -337,127 +326,122 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .sf-slot-color {
+        .mc-slot-bg {
           position: absolute;
           inset: 0;
           z-index: 0;
         }
 
-        .sf-search {
+        .mc-search {
           display: flex;
           align-items: center;
-          gap: 8px;
-          margin: 12px 16px;
-          padding: 8px 12px;
-          background: #2a2a2a;
-          border: 1px solid #444;
-          border-radius: 6px;
+          gap: 6px;
+          margin: 10px 12px;
+          padding: 6px 10px;
+          background: #1e1e1e;
+          border: 2px solid;
+          border-color: #373737 #1a1a1a #1a1a1a #373737;
         }
 
-        .sf-search svg {
-          width: 16px;
-          height: 16px;
-          color: #888;
-          flex-shrink: 0;
+        .mc-search-icon {
+          font-size: 12px;
+          opacity: 0.6;
         }
 
-        .sf-search input {
+        .mc-search input {
           flex: 1;
           background: transparent;
           border: none;
           outline: none;
           color: #fff;
           font-size: 13px;
+          font-family: inherit;
         }
 
-        .sf-search input::placeholder {
+        .mc-search input::placeholder {
           color: #666;
         }
 
-        .sf-categories {
+        .mc-tabs {
           display: flex;
-          gap: 4px;
-          padding: 0 16px 12px;
+          gap: 2px;
+          padding: 0 12px 8px;
           overflow-x: auto;
         }
 
-        .sf-cat {
-          display: flex;
-          align-items: center;
-          gap: 4px;
+        .mc-tab {
           padding: 6px 10px;
-          font-size: 12px;
-          color: #aaa;
-          background: #2a2a2a;
-          border: 1px solid #3d3d3d;
-          border-radius: 4px;
+          font-size: 11px;
+          color: #fff;
+          background: #3b3b3b;
+          border: 2px solid;
+          border-color: #555 #2a2a2a #2a2a2a #555;
           cursor: pointer;
           white-space: nowrap;
-          transition: all 0.15s;
+          font-family: inherit;
         }
 
-        .sf-cat:hover {
-          background: #3a3a3a;
+        .mc-tab:hover {
+          background: #4a4a4a;
+        }
+
+        .mc-tab.active {
+          background: #4a698f;
+          border-color: #6a8ab4 #38537a #38537a #6a8ab4;
           color: #fff;
         }
 
-        .sf-cat.active {
-          background: #4a7a9a;
-          border-color: #5ca8d4;
-          color: #fff;
-        }
-
-        .sf-grid {
+        .mc-grid {
           flex: 1;
           overflow-y: auto;
           padding: 8px;
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
-          gap: 4px;
+          grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+          gap: 2px;
           align-content: start;
+          background: #8b8b8b;
+          border-top: 2px solid #6b6b6b;
+          border-bottom: 2px solid #a0a0a0;
         }
 
-        .sf-grid::-webkit-scrollbar {
-          width: 6px;
+        .mc-grid::-webkit-scrollbar {
+          width: 8px;
         }
 
-        .sf-grid::-webkit-scrollbar-track {
-          background: #2a2a2a;
+        .mc-grid::-webkit-scrollbar-track {
+          background: #5a5a5a;
+          border-left: 2px solid #6b6b6b;
         }
 
-        .sf-grid::-webkit-scrollbar-thumb {
-          background: #555;
-          border-radius: 3px;
+        .mc-grid::-webkit-scrollbar-thumb {
+          background: #2d2d2d;
+          border: 2px solid;
+          border-color: #3d3d3d #1a1a1a #1a1a1a #3d3d3d;
         }
 
-        .sf-block {
+        .mc-item {
           position: relative;
           aspect-ratio: 1;
-          background: #2a2a2a;
-          border: 2px solid transparent;
-          border-radius: 4px;
+          background: #2d2d2d;
+          border: 3px solid;
+          border-color: #373737 #1a1a1a #1a1a1a #373737;
           cursor: pointer;
-          overflow: hidden;
-          transition: all 0.1s;
         }
 
-        .sf-block:hover {
-          border-color: #888;
-          transform: scale(1.1);
-          z-index: 1;
+        .mc-item:hover {
+          filter: brightness(1.15);
         }
 
-        .sf-block.selected {
-          border-color: #5ca8d4;
-          box-shadow: 0 0 6px rgba(92, 168, 212, 0.4);
+        .mc-item.selected {
+          border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4;
         }
 
-        .sf-block-icon {
+        .mc-item-inner {
           position: absolute;
           inset: 0;
         }
 
-        .sf-block-icon img {
+        .mc-item-inner img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -467,39 +451,39 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .sf-block-icon div {
+        .mc-item-inner div {
           position: absolute;
           inset: 0;
         }
 
-        .sf-empty {
+        .mc-empty {
           grid-column: 1 / -1;
           text-align: center;
-          padding: 20px;
-          color: #666;
-          font-size: 13px;
+          padding: 16px;
+          color: #555;
+          font-size: 12px;
         }
 
-        .sf-current {
+        .mc-footer {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 12px 16px;
-          background: #252525;
-          border-top: 1px solid #3d3d3d;
+          gap: 10px;
+          padding: 10px 12px;
+          background: linear-gradient(to bottom, #3b3b3b 0%, #1e1e1e 100%);
+          border-top: 2px solid #4a4a4a;
         }
 
-        .sf-current-icon {
+        .mc-footer-icon {
           position: relative;
-          width: 44px;
-          height: 44px;
-          border-radius: 6px;
-          overflow: hidden;
-          background: #3a3a3a;
+          width: 40px;
+          height: 40px;
+          background: #2d2d2d;
+          border: 3px solid;
+          border-color: #373737 #1a1a1a #1a1a1a #373737;
           flex-shrink: 0;
         }
 
-        .sf-current-icon img {
+        .mc-footer-icon img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -509,149 +493,144 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .sf-current-icon div {
+        .mc-footer-icon div {
           position: absolute;
           inset: 0;
         }
 
-        .sf-current-info {
+        .mc-footer-info {
           flex: 1;
-          min-width: 0;
         }
 
-        .sf-current-name {
-          font-size: 14px;
-          font-weight: 600;
+        .mc-footer-name {
+          font-size: 13px;
+          font-weight: bold;
           color: #fff;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          text-shadow: 1px 1px 0 #3f3f3f;
         }
 
-        .sf-current-id {
-          font-size: 11px;
-          font-family: monospace;
+        .mc-footer-id {
+          font-size: 10px;
           color: #888;
           margin-top: 2px;
+          font-family: monospace;
         }
 
-        .sf-add-btn {
-          width: 36px;
-          height: 36px;
-          font-size: 18px;
-          background: #3a3a3a;
-          border: 1px solid #555;
-          border-radius: 6px;
+        .mc-star {
+          width: 32px;
+          height: 32px;
+          font-size: 16px;
+          background: #3b3b3b;
+          border: 2px solid;
+          border-color: #555 #2a2a2a #2a2a2a #555;
+          color: #ffd700;
           cursor: pointer;
-          transition: all 0.15s;
-          flex-shrink: 0;
         }
 
-        .sf-add-btn:hover {
+        .mc-star:hover {
           background: #4a4a4a;
-          transform: scale(1.1);
         }
 
-        .sf-picker-overlay {
+        .mc-picker-overlay {
           position: absolute;
           inset: 0;
-          background: rgba(0, 0, 0, 0.7);
+          background: rgba(0, 0, 0, 0.6);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 100;
         }
 
-        .sf-picker {
-          width: 340px;
-          max-height: 420px;
-          background: #2a2a2a;
-          border: 1px solid #555;
-          border-radius: 8px;
-          overflow: hidden;
+        .mc-picker {
+          width: 300px;
+          max-height: 380px;
+          background: #c6c6c6;
+          border: 4px solid;
+          border-color: #555 #1a1a1a #1a1a1a #555;
           display: flex;
           flex-direction: column;
         }
 
-        .sf-picker-header {
+        .mc-picker-title {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 12px 16px;
-          background: #333;
-          border-bottom: 1px solid #444;
-          font-size: 14px;
-          font-weight: 600;
-        }
-
-        .sf-picker-close {
-          width: 24px;
-          height: 24px;
-          background: transparent;
-          border: none;
-          color: #888;
-          cursor: pointer;
-          font-size: 16px;
-        }
-
-        .sf-picker-close:hover {
-          color: #fff;
-        }
-
-        .sf-picker-search {
-          padding: 8px 12px;
-          border-bottom: 1px solid #444;
-        }
-
-        .sf-picker-search input {
-          width: 100%;
           padding: 8px 10px;
-          background: #3a3a3a;
-          border: 1px solid #555;
-          border-radius: 4px;
-          color: #fff;
+          background: linear-gradient(to bottom, #3b3b3b 0%, #1e1e1e 100%);
+          border-bottom: 2px solid #232323;
           font-size: 13px;
+          font-weight: bold;
+          color: #fff;
+        }
+
+        .mc-picker-x {
+          width: 20px;
+          height: 20px;
+          background: #3b3b3b;
+          border: 2px solid;
+          border-color: #555 #2a2a2a #2a2a2a #555;
+          color: #fff;
+          cursor: pointer;
+          font-size: 14px;
+          line-height: 1;
+        }
+
+        .mc-picker-x:hover {
+          background: #4a4a4a;
+        }
+
+        .mc-picker-search {
+          padding: 8px;
+          background: #8b8b8b;
+          border-bottom: 2px solid #6b6b6b;
+        }
+
+        .mc-picker-search input {
+          width: 100%;
+          padding: 6px 8px;
+          background: #fff;
+          border: 2px solid;
+          border-color: #373737 #1a1a1a #1a1a1a #373737;
+          color: #000;
+          font-size: 12px;
           outline: none;
+          font-family: inherit;
         }
 
-        .sf-picker-search input:focus {
-          border-color: #5ca8d4;
-        }
-
-        .sf-picker-grid {
+        .mc-picker-items {
           flex: 1;
           overflow-y: auto;
-          padding: 8px;
+          padding: 6px;
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 4px;
+          background: #8b8b8b;
         }
 
-        .sf-picker-item {
+        .mc-picker-item {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 4px;
-          padding: 6px;
-          border-radius: 4px;
+          gap: 3px;
+          padding: 4px;
+          background: #2d2d2d;
+          border: 2px solid;
+          border-color: #373737 #1a1a1a #1a1a1a #373737;
           cursor: pointer;
-          transition: background 0.1s;
         }
 
-        .sf-picker-item:hover {
-          background: #444;
+        .mc-picker-item:hover {
+          filter: brightness(1.2);
         }
 
-        .sf-picker-icon {
+        .mc-picker-icon {
           position: relative;
-          width: 40px;
-          height: 40px;
-          border-radius: 4px;
-          overflow: hidden;
+          width: 36px;
+          height: 36px;
           background: #3a3a3a;
         }
 
-        .sf-picker-icon img {
+        .mc-picker-icon img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -661,13 +640,13 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .sf-picker-icon div {
+        .mc-picker-icon div {
           position: absolute;
           inset: 0;
         }
 
-        .sf-picker-name {
-          font-size: 9px;
+        .mc-picker-item span {
+          font-size: 8px;
           color: #aaa;
           text-align: center;
           max-width: 100%;
