@@ -16,12 +16,12 @@ const MAX_SEARCH_HISTORY = 10
 const PAGE_SIZE = 48
 
 const CATEGORIES = [
-  { key: 'all', label: '全部' },
-  { key: 'building', label: '建筑' },
-  { key: 'natural', label: '自然' },
-  { key: 'redstone', label: '红石' },
-  { key: 'decoration', label: '装饰' },
-  { key: 'utility', label: '功能' },
+  { key: 'all', label: '全部', icon: 'grid' },
+  { key: 'building', label: '建筑', icon: 'brick' },
+  { key: 'natural', label: '自然', icon: 'tree' },
+  { key: 'redstone', label: '红石', icon: 'circuit' },
+  { key: 'decoration', label: '装饰', icon: 'flower' },
+  { key: 'utility', label: '功能', icon: 'tool' },
 ] as const
 
 function loadFavorites(): BlockData[] {
@@ -82,6 +82,18 @@ const CATEGORY_COUNTS = {
 
 type ViewMode = 'grid' | 'list'
 type ActiveTab = 'recent' | 'pinned' | 'palette' | BlockCategory | 'all'
+
+const CategoryIcon = ({ type }: { type: string }) => {
+  const icons: Record<string, JSX.Element> = {
+    grid: <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="0.5" y="5.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="5.5" width="4" height="4" rx="0.5"/></svg>,
+    brick: <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="3" rx="0.5"/><rect x="1" y="5" width="4" height="4" rx="0.5"/><rect x="6" y="5" width="3" height="4" rx="0.5"/></svg>,
+    tree: <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M5 1L2 5h2L2 9h6L6 5h2L5 1z"/></svg>,
+    circuit: <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><circle cx="2" cy="5" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="8" cy="8" r="1.5"/><path d="M3.5 5h1L5 3l2 4-1 .5 1 2-1.5.5L4 8l-1-3" stroke="currentColor" strokeWidth="0.8" fill="none"/></svg>,
+    flower: <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><circle cx="5" cy="5" r="1.5"/><ellipse cx="5" cy="2" rx="1" ry="1.5"/><ellipse cx="5" cy="8" rx="1" ry="1.5"/><ellipse cx="2" cy="5" rx="1.5" ry="1"/><ellipse cx="8" cy="5" rx="1.5" ry="1"/></svg>,
+    tool: <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M7 1l2 2-5 5-2-2 5-5zM3 5l-1.5 1.5L3 8l1.5-1.5L3 5z"/></svg>,
+  }
+  return icons[type] || icons.grid
+}
 
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
@@ -171,6 +183,37 @@ export function BlockBrowser() {
         if (newIdx >= 0 && newIdx < displayedBlocks.length) {
           focusIndexRef.current = newIdx
           setSelectedBlock(displayedBlocks[newIdx])
+          const item = gridRef.current?.children[newIdx] as HTMLElement
+          item?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        }
+      }
+      if (e.key === 'Home') {
+        e.preventDefault()
+        if (displayedBlocks.length > 0) {
+          focusIndexRef.current = 0
+          setSelectedBlock(displayedBlocks[0])
+          gridRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+      }
+      if (e.key === 'End') {
+        e.preventDefault()
+        if (displayedBlocks.length > 0) {
+          focusIndexRef.current = displayedBlocks.length - 1
+          setSelectedBlock(displayedBlocks[displayedBlocks.length - 1])
+          gridRef.current?.scrollTo({ top: gridRef.current.scrollHeight, behavior: 'smooth' })
+        }
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedBlock && !showPicker) {
+          const idx = favorites.findIndex(f => f.id === selectedBlock.id)
+          if (idx >= 0) {
+            e.preventDefault()
+            const newFavs = [...favorites]
+            newFavs.splice(idx, 1)
+            newFavs.push(BLOCKS[0])
+            setFavorites(newFavs)
+            try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+          }
         }
       }
     }
@@ -318,6 +361,46 @@ export function BlockBrowser() {
     setDragOverSlot(null)
   }
 
+  const handleBlockDragStart = (e: React.DragEvent, block: BlockData) => {
+    if (showPicker !== null) return
+    e.dataTransfer.setData('text/plain', block.id)
+    e.dataTransfer.effectAllowed = 'copy'
+  }
+
+  const handleQuickbarDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDragOverSlot(idx)
+  }
+
+  const handleQuickbarDrop = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    const blockId = e.dataTransfer.getData('text/plain')
+    const block = BLOCKS.find(b => b.id === blockId)
+    if (block) {
+      const existing = favorites.findIndex(f => f.id === block.id)
+      let newFavs: BlockData[]
+      if (existing >= 0 && existing !== idx) {
+        newFavs = [...favorites]
+        const [removed] = newFavs.splice(existing, 1)
+        newFavs.splice(idx, 0, removed)
+      } else if (existing === -1) {
+        newFavs = [...favorites]
+        newFavs[idx] = block
+      } else {
+        newFavs = favorites
+      }
+      setFavorites(newFavs)
+      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+    }
+    setDraggedSlot(null)
+    setDragOverSlot(null)
+  }
+
+  const handleQuickbarDragLeave = () => {
+    setDragOverSlot(null)
+  }
+
   const pickerBlocks = useMemo(() => {
     if (pickerSearch.trim()) return searchBlocks(pickerSearch).slice(0, 80)
     return BLOCKS.slice(0, 80)
@@ -389,9 +472,12 @@ export function BlockBrowser() {
           <div className="bp-help-row"><kbd>1-9</kbd><span>快捷栏选择</span></div>
           <div className="bp-help-row"><kbd>/</kbd><kbd>B</kbd><span>聚焦搜索</span></div>
           <div className="bp-help-row"><kbd>↑</kbd><kbd>↓</kbd><span>导航方块</span></div>
+          <div className="bp-help-row"><kbd>Home</kbd><kbd>End</kbd><span>首/末方块</span></div>
           <div className="bp-help-row"><kbd>V</kbd><span>切换视图</span></div>
+          <div className="bp-help-row"><kbd>Del</kbd><span>移除快捷栏</span></div>
           <div className="bp-help-row"><kbd>Esc</kbd><span>关闭弹窗</span></div>
           <div className="bp-help-row"><kbd>双击</kbd><span>添加调色板</span></div>
+          <div className="bp-help-row"><kbd>拖拽</kbd><span>添加到快捷栏</span></div>
           <div className="bp-help-row"><kbd>右键</kbd><span>操作菜单</span></div>
         </div>
       )}
@@ -476,6 +562,7 @@ export function BlockBrowser() {
             className={`bp-tab ${activeTab === cat.key ? 'active' : ''}`}
             onClick={() => setActiveTab(cat.key)}
           >
+            <CategoryIcon type={cat.icon} />
             {cat.label}
           </button>
         ))}
@@ -490,8 +577,10 @@ export function BlockBrowser() {
               className={`bp-slot ${isActive ? 'active' : ''} ${dragOverSlot === idx ? 'drop' : ''}`}
               draggable
               onDragStart={e => handleDragStart(e, idx)}
-              onDragOver={e => handleDragOver(e, idx)}
+              onDragOver={e => handleQuickbarDragOver(e, idx)}
               onDragEnd={handleDragEnd}
+              onDrop={e => handleQuickbarDrop(e, idx)}
+              onDragLeave={handleQuickbarDragLeave}
               onClick={() => handleSlotClick(block)}
               onContextMenu={e => handleSlotRightClick(e, idx)}
               onMouseEnter={() => setHoveredBlock(block)}
@@ -543,6 +632,9 @@ export function BlockBrowser() {
             onContextMenu={e => handleBlockRightClick(e, block)}
             onMouseEnter={() => setHoveredBlock(block)}
             onMouseLeave={() => setHoveredBlock(null)}
+            draggable
+            onDragStart={e => handleBlockDragStart(e, block)}
+            onDragEnd={() => setDraggedSlot(null)}
           >
             <div className="bp-item-img">
               {getTexture(block)}
@@ -1147,6 +1239,8 @@ export function BlockBrowser() {
           outline-offset: 1px;
           box-shadow: 0 0 0 4px rgba(74, 143, 212, 0.15), 0 4px 12px rgba(0,0,0,0.4);
         }
+        .bp-item:active { cursor: grabbing; }
+        .bp-item[draggable="true"]:active { opacity: 0.7; }
 
         .bp-item-img {
           position: relative;
