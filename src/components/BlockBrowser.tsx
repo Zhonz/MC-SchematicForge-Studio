@@ -80,16 +80,12 @@ const CATEGORY_COUNTS = {
   utility: BLOCKS.filter(b => b.category === 'utility').length,
 }
 
-interface ContextMenuState {
-  show: boolean
-  x: number
-  y: number
-  block: BlockData | null
-}
+type ViewMode = 'grid' | 'list'
+type ActiveTab = 'recent' | 'pinned' | 'palette' | BlockCategory | 'all'
 
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
-  const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent' | 'pinned' | 'palette'>('all')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchHistory, setSearchHistory] = useState<string[]>(loadSearchHistory)
   const [showHistory, setShowHistory] = useState(false)
@@ -101,36 +97,44 @@ export function BlockBrowser() {
   const [showPicker, setShowPicker] = useState<number | null>(null)
   const [pickerSearch, setPickerSearch] = useState('')
   const [page, setPage] = useState(0)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ show: false, x: 0, y: 0, block: null })
+  const [contextMenu, setContextMenu] = useState<{ show: boolean; x: number; y: number; block: BlockData | null }>({ show: false, x: 0, y: 0, block: null })
   const [showHelp, setShowHelp] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [draggedSlot, setDraggedSlot] = useState<number | null>(null)
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  const [hoveredBlock, setHoveredBlock] = useState<BlockData | null>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const historyRef = useRef<HTMLDivElement>(null)
+  const focusIndexRef = useRef(-1)
 
   const filteredBlocks = useMemo(() => {
     if (searchQuery.trim()) return searchBlocks(searchQuery)
-    if (activeCategory === 'recent') return recent
-    if (activeCategory === 'pinned') return pinned.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
-    if (activeCategory === 'palette') return palette.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
-    if (activeCategory === 'all') return BLOCKS
-    return getBlocksByCategory(activeCategory)
-  }, [activeCategory, searchQuery, recent, pinned, palette])
+    if (activeTab === 'recent') return recent
+    if (activeTab === 'pinned') return pinned.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    if (activeTab === 'palette') return palette.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    if (activeTab === 'all') return BLOCKS
+    return getBlocksByCategory(activeTab)
+  }, [activeTab, searchQuery, recent, pinned, palette])
 
   const displayedBlocks = useMemo(() => {
-    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeCategory)) return filteredBlocks
+    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeTab)) return filteredBlocks
     return filteredBlocks.slice(0, (page + 1) * PAGE_SIZE)
-  }, [filteredBlocks, page, searchQuery, activeCategory])
+  }, [filteredBlocks, page, searchQuery, activeTab])
+
+  const loadProgress = useMemo(() => {
+    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeTab)) return 100
+    return Math.min(100, Math.round((displayedBlocks.length / filteredBlocks.length) * 100))
+  }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeTab])
 
   const hasMore = useMemo(() => {
-    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeCategory)) return false
+    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeTab)) return false
     return filteredBlocks.length > displayedBlocks.length
-  }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeCategory])
+  }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeTab])
 
-  useEffect(() => setPage(0), [activeCategory, searchQuery])
+  useEffect(() => { setPage(0); focusIndexRef.current = -1 }, [activeTab, searchQuery])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -157,12 +161,22 @@ export function BlockBrowser() {
       if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus(); return }
       if (e.key === '?') { e.preventDefault(); setShowHelp(h => !h); return }
       if (e.key === 'b' || e.key === 'B') { e.preventDefault(); searchInputRef.current?.focus(); return }
+      if (e.key === 'v' || e.key === 'V') { setViewMode(v => v === 'grid' ? 'list' : 'grid'); return }
       const num = parseInt(e.key)
       if (num >= 1 && num <= 9 && favorites[num - 1]) setSelectedBlock(favorites[num - 1])
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const cols = viewMode === 'grid' ? Math.floor(gridRef.current?.clientWidth! / 36) : 1
+        const newIdx = focusIndexRef.current + (e.key === 'ArrowDown' ? cols : -cols)
+        if (newIdx >= 0 && newIdx < displayedBlocks.length) {
+          focusIndexRef.current = newIdx
+          setSelectedBlock(displayedBlocks[newIdx])
+        }
+      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [favorites, setSelectedBlock])
+  }, [favorites, setSelectedBlock, displayedBlocks, viewMode])
 
   useEffect(() => {
     if (selectedBlock) {
@@ -181,9 +195,7 @@ export function BlockBrowser() {
         setShowPicker(null)
         setPickerSearch('')
       }
-      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
-        setShowHistory(false)
-      }
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) setShowHistory(false)
       setContextMenu({ show: false, x: 0, y: 0, block: null })
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -197,10 +209,10 @@ export function BlockBrowser() {
   const handleBlockClick = (block: BlockData) => {
     setSelectedBlock(block)
     setShowHistory(false)
+    focusIndexRef.current = displayedBlocks.indexOf(block)
   }
 
   const handleBlockDoubleClick = (block: BlockData) => handleAddToPalette(block)
-
   const handleBlockRightClick = (e: React.MouseEvent, block: BlockData) => {
     e.preventDefault()
     setContextMenu({ show: true, x: e.clientX, y: e.clientY, block })
@@ -278,12 +290,6 @@ export function BlockBrowser() {
     }
   }
 
-  const handleRemoveFromPalette = (id: string) => {
-    const newPalette = palette.filter(p => p !== id)
-    setPalette(newPalette)
-    try { localStorage.setItem(PALETTE_KEY, JSON.stringify(newPalette)) } catch {}
-  }
-
   const handleCopyId = (id: string) => {
     navigator.clipboard.writeText(id.replace('minecraft:', ''))
     setCopiedId(id)
@@ -321,180 +327,80 @@ export function BlockBrowser() {
   const isInQuickbar = (id: string) => favorites.some(f => f.id === id)
   const isInPalette = (id: string) => palette.includes(id)
 
-  const categoryLabel = activeCategory === 'recent' ? '最近' : 
-    activeCategory === 'pinned' ? '收藏' : 
-    activeCategory === 'palette' ? '调色板' : 
-    CATEGORIES.find(c => c.key === activeCategory)?.label || ''
+  const tabLabel = activeTab === 'recent' ? '最近' :
+    activeTab === 'pinned' ? '收藏' :
+    activeTab === 'palette' ? '调色板' :
+    CATEGORIES.find(c => c.key === activeTab)?.label || ''
 
-  const contextBlock = contextMenu.block
+  const getTexture = (block: BlockData) => {
+    if (failedTextures.has(block.id)) {
+      return <div className="bp-fallback" style={{ background: `linear-gradient(135deg, ${block.color} 0%, ${block.color}cc 100%)` }} />
+    }
+    return <img src={getMCTextureURL(block.id)} alt="" loading="lazy" onError={() => handleTextureError(block.id)} />
+  }
 
   return (
-    <div className="sb-root">
-      <div className="sb-header">
-        <div className="sb-title">
-          <span className="sb-title-icon">🧱</span>
-          <span className="sb-title-text">方块</span>
-          <span className="sb-title-count">{BLOCKS.length}</span>
+    <div className="bp-root">
+      <div className="bp-header">
+        <div className="bp-title">
+          <span className="bp-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="14" height="14" rx="2" fill="#3b3b3b" stroke="#1a1a1a" strokeWidth="1"/>
+              <rect x="3" y="3" width="4" height="4" fill="#5a8f3e"/>
+              <rect x="9" y="3" width="4" height="4" fill="#8b7355"/>
+              <rect x="3" y="9" width="4" height="4" fill="#8b7355"/>
+              <rect x="9" y="9" width="4" height="4" fill="#5a8f3e"/>
+            </svg>
+          </span>
+          <span className="bp-name">方块选择</span>
+          <span className="bp-badge">{BLOCKS.length}</span>
         </div>
-        <button className="sb-help-btn" onClick={() => setShowHelp(h => !h)} title="快捷键">?</button>
+        <div className="bp-header-actions">
+          <button
+            className={`bp-icon-btn ${viewMode === 'grid' ? 'active' : ''}`}
+            onClick={() => setViewMode('grid')}
+            title="网格视图 (V)"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <rect x="0.5" y="0.5" width="4" height="4" rx="0.5"/>
+              <rect x="6.5" y="0.5" width="4" height="4" rx="0.5"/>
+              <rect x="0.5" y="6.5" width="4" height="4" rx="0.5"/>
+              <rect x="6.5" y="6.5" width="4" height="4" rx="0.5"/>
+            </svg>
+          </button>
+          <button
+            className={`bp-icon-btn ${viewMode === 'list' ? 'active' : ''}`}
+            onClick={() => setViewMode('list')}
+            title="列表视图 (V)"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <rect x="0.5" y="1" width="10" height="2" rx="0.5"/>
+              <rect x="0.5" y="5" width="10" height="2" rx="0.5"/>
+              <rect x="0.5" y="9" width="10" height="2" rx="0.5"/>
+            </svg>
+          </button>
+          <button className="bp-icon-btn" onClick={() => setShowHelp(h => !h)} title="快捷键 (?)">?</button>
+        </div>
       </div>
 
       {showHelp && (
-        <div className="sb-help">
-          <div className="sb-help-title">快捷键</div>
-          <div className="sb-help-row"><kbd>1-9</kbd><span>快捷栏</span></div>
-          <div className="sb-help-row"><kbd>/</kbd><kbd>B</kbd><span>搜索</span></div>
-          <div className="sb-help-row"><kbd>↑↓</kbd><span>历史</span></div>
-          <div className="sb-help-row"><kbd>Esc</kbd><span>关闭</span></div>
-          <div className="sb-help-row"><kbd>右键</kbd><span>菜单</span></div>
-          <div className="sb-help-row"><kbd>双击</kbd><span>调色板</span></div>
+        <div className="bp-help">
+          <div className="bp-help-title">快捷键</div>
+          <div className="bp-help-row"><kbd>1-9</kbd><span>快捷栏选择</span></div>
+          <div className="bp-help-row"><kbd>/</kbd><kbd>B</kbd><span>聚焦搜索</span></div>
+          <div className="bp-help-row"><kbd>↑</kbd><kbd>↓</kbd><span>导航方块</span></div>
+          <div className="bp-help-row"><kbd>V</kbd><span>切换视图</span></div>
+          <div className="bp-help-row"><kbd>Esc</kbd><span>关闭弹窗</span></div>
+          <div className="bp-help-row"><kbd>双击</kbd><span>添加调色板</span></div>
+          <div className="bp-help-row"><kbd>右键</kbd><span>操作菜单</span></div>
         </div>
       )}
 
-      <div className="sb-palette-zone">
-        <div className="sb-zone-label">
-          <span>调色板</span>
-          <span className="sb-zone-hint">双击添加</span>
-        </div>
-        <div className="sb-palette">
-          {palette.slice(0, MAX_PALETTE).map((id, idx) => {
-            const block = BLOCKS.find(b => b.id === id)
-            if (!block) return null
-            const isActive = selectedBlock?.id === block.id
-            return (
-              <div
-                key={id}
-                className={`sb-palette-item ${isActive ? 'active' : ''} ${dragOverSlot === idx ? 'drop-target' : ''}`}
-                draggable
-                onDragStart={(e) => handleDragStart(e, idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={handleDragEnd}
-                onClick={() => handleBlockClick(block)}
-                onContextMenu={(e) => handleBlockRightClick(e, block)}
-                title={block.nameZh}
-              >
-                <div className="sb-item-img">
-                  {!failedTextures.has(id) ? (
-                    <img src={getMCTextureURL(id)} alt="" onError={() => handleTextureError(id)} />
-                  ) : (
-                    <div style={{ backgroundColor: block.color }} />
-                  )}
-                </div>
-              </div>
-            )
-          })}
-          {palette.length === 0 && (
-            <div className="sb-palette-empty">双击方块添加</div>
-          )}
-        </div>
-      </div>
-
-      <div className="sb-quickbar-zone">
-        <div className="sb-zone-label">
-          <span>快捷栏</span>
-          <span className="sb-zone-hint">1-9</span>
-        </div>
-        <div className="sb-quickbar">
-          {favorites.map((block, idx) => {
-            const isActive = selectedBlock?.id === block.id
-            return (
-              <div
-                key={block.id}
-                className={`sb-slot ${isActive ? 'active' : ''} ${dragOverSlot === idx ? 'drop-target' : ''}`}
-                draggable
-                onDragStart={(e) => handleDragStart(e, idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={handleDragEnd}
-                onClick={() => handleSlotClick(block)}
-                onContextMenu={(e) => handleSlotRightClick(e, idx)}
-                title={block.nameZh}
-              >
-                <span className="sb-slot-num">{idx + 1}</span>
-                <div className="sb-slot-img">
-                  {!failedTextures.has(block.id) ? (
-                    <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
-                  ) : (
-                    <div style={{ backgroundColor: block.color }} />
-                  )}
-                </div>
-                {isPinned(block.id) && <span className="sb-slot-pin">📌</span>}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {showPicker !== null && (
-        <div className="sb-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
-          <div className="sb-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
-            <div className="sb-picker-title">
-              <span>替换 {showPicker + 1}</span>
-              <button className="sb-picker-close" onClick={() => { setShowPicker(null); setPickerSearch('') }}>×</button>
-            </div>
-            <div className="sb-picker-search">
-              <input
-                type="text"
-                placeholder="搜索..."
-                value={pickerSearch}
-                onChange={e => setPickerSearch(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="sb-picker-grid">
-              {pickerBlocks.map(block => (
-                <div key={block.id} className="sb-picker-cell" onClick={() => handlePickBlock(block)}>
-                  <div className="sb-picker-img">
-                    {!failedTextures.has(block.id) ? (
-                      <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
-                    ) : (
-                      <div style={{ backgroundColor: block.color }} />
-                    )}
-                  </div>
-                  <span>{block.nameZh}</span>
-                </div>
-              ))}
-              {pickerBlocks.length === 0 && <div className="sb-picker-empty">无结果</div>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {contextMenu.show && contextBlock && (
-        <div className="sb-context" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-          <div className="sb-context-header">
-            <div className="sb-context-icon">
-              {!failedTextures.has(contextBlock.id) ? (
-                <img src={getMCTextureURL(contextBlock.id)} alt="" onError={() => handleTextureError(contextBlock.id)} />
-              ) : (
-                <div style={{ backgroundColor: contextBlock.color }} />
-              )}
-            </div>
-            <div>
-              <div className="sb-context-name">{contextBlock.nameZh}</div>
-              <div className="sb-context-id">{contextBlock.id.replace('minecraft:', '')}</div>
-            </div>
-          </div>
-          <div className="sb-context-sep" />
-          <button className="sb-context-item" onClick={() => { setSelectedBlock(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>选择</button>
-          <button className="sb-context-item" onClick={() => { handleAddToPalette(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            {isInPalette(contextBlock.id) ? '✓ 已在调色板' : '+ 加入调色板'}
-          </button>
-          <button className="sb-context-item" onClick={() => { handleAddToQuickbar(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            {isInQuickbar(contextBlock.id) ? '✓ 已在快捷栏' : '+ 加入快捷栏'}
-          </button>
-          <button className="sb-context-item" onClick={() => { handleTogglePin(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            {isPinned(contextBlock.id) ? '📌 取消收藏' : '☆ 收藏'}
-          </button>
-          <div className="sb-context-sep" />
-          <button className="sb-context-item" onClick={() => { handleCopyId(contextBlock.id); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            {copiedId === contextBlock.id ? '✓ 已复制' : '📋 复制ID'}
-          </button>
-        </div>
-      )}
-
-      <div className="sb-search-zone">
-        <div className="sb-search-box">
-          <span className="sb-search-icon">🔍</span>
+      <div className="bp-toolbar">
+        <div className="bp-search">
+          <svg className="bp-search-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+            <path d="M10 6.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Zm-.691 3.516a4.5 4.5 0 1 1 .707-.707l2.838 2.838a.5.5 0 0 1-.707.707l-2.838-2.838Z"/>
+          </svg>
           <input
             ref={searchInputRef}
             type="text"
@@ -517,707 +423,1085 @@ export function BlockBrowser() {
               }
             }}
           />
-          {searchQuery && <button className="sb-search-clear" onClick={() => setSearchQuery('')}>×</button>}
+          {searchQuery && (
+            <button className="bp-search-clear" onClick={() => setSearchQuery('')}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
         </div>
         {showHistory && searchHistory.length > 0 && !searchQuery && (
-          <div className="sb-history" ref={historyRef}>
-            <div className="sb-history-title">历史</div>
+          <div className="bp-history" ref={historyRef}>
+            <div className="bp-history-title">搜索历史</div>
             {searchHistory.map((h, i) => (
-              <button key={i} className="sb-history-item" onClick={() => handleHistoryClick(h)}>
-                <span>🕐</span><span>{h}</span>
+              <button key={i} className="bp-history-item" onClick={() => handleHistoryClick(h)}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" opacity="0.5">
+                  <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1"/>
+                  <path d="M5 2v3l2 1" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+                </svg>
+                <span>{h}</span>
               </button>
             ))}
           </div>
         )}
       </div>
 
-      <div className="sb-tabs">
-        <button className={`sb-tab ${activeCategory === 'recent' ? 'active' : ''}`} onClick={() => setActiveCategory('recent')}>
-          最近 ({recent.length})
+      <div className="bp-tabs">
+        <button className={`bp-tab ${activeTab === 'recent' ? 'active' : ''}`} onClick={() => setActiveTab('recent')}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1"/>
+            <path d="M5 2v3l1.5 1" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+          </svg>
+          最近 <span className="bp-tab-count">{recent.length}</span>
         </button>
-        <button className={`sb-tab ${activeCategory === 'pinned' ? 'active' : ''}`} onClick={() => setActiveCategory('pinned')}>
-          收藏 ({pinned.length})
+        <button className={`bp-tab ${activeTab === 'pinned' ? 'active' : ''}`} onClick={() => setActiveTab('pinned')}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <path d="M5 1l1.2 2.4 2.6.4-1.9 1.8.5 2.6L5 6.5 2.6 8.2l.5-2.6L1.2 3.8l2.6-.4L5 1z"/>
+          </svg>
+          收藏 <span className="bp-tab-count">{pinned.length}</span>
         </button>
-        <button className={`sb-tab ${activeCategory === 'palette' ? 'active' : ''}`} onClick={() => setActiveCategory('palette')}>
-          调色板 ({palette.length})
+        <button className={`bp-tab ${activeTab === 'palette' ? 'active' : ''}`} onClick={() => setActiveTab('palette')}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <circle cx="3" cy="3" r="2"/>
+            <circle cx="7" cy="3" r="2"/>
+            <circle cx="5" cy="7" r="2"/>
+          </svg>
+          调色板 <span className="bp-tab-count">{palette.length}</span>
         </button>
+        <div className="bp-tab-sep" />
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
-            className={`sb-tab ${activeCategory === cat.key ? 'active' : ''}`}
-            onClick={() => setActiveCategory(cat.key)}
+            className={`bp-tab ${activeTab === cat.key ? 'active' : ''}`}
+            onClick={() => setActiveTab(cat.key)}
           >
-            {cat.label} ({CATEGORY_COUNTS[cat.key as keyof typeof CATEGORY_COUNTS]})
+            {cat.label}
           </button>
         ))}
       </div>
 
-      <div className="sb-grid-header">{searchQuery ? `"${searchQuery}" ${filteredBlocks.length}` : categoryLabel}</div>
-
-      <div className="sb-grid" ref={gridRef}>
-        {displayedBlocks.map(block => (
-          <div
-            key={block.id}
-            className={`sb-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
-            onClick={() => handleBlockClick(block)}
-            onDoubleClick={() => handleBlockDoubleClick(block)}
-            onContextMenu={(e) => handleBlockRightClick(e, block)}
-          >
-            <div className="sb-block-img">
-              {!failedTextures.has(block.id) ? (
-                <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
-              ) : (
-                <div style={{ backgroundColor: block.color }} />
+      <div className="bp-quickbar">
+        {favorites.map((block, idx) => {
+          const isActive = selectedBlock?.id === block.id
+          return (
+            <div
+              key={block.id}
+              className={`bp-slot ${isActive ? 'active' : ''} ${dragOverSlot === idx ? 'drop' : ''}`}
+              draggable
+              onDragStart={e => handleDragStart(e, idx)}
+              onDragOver={e => handleDragOver(e, idx)}
+              onDragEnd={handleDragEnd}
+              onClick={() => handleSlotClick(block)}
+              onContextMenu={e => handleSlotRightClick(e, idx)}
+              onMouseEnter={() => setHoveredBlock(block)}
+              onMouseLeave={() => setHoveredBlock(null)}
+              title={`${block.nameZh} [${idx + 1}]`}
+            >
+              <span className="bp-slot-num">{idx + 1}</span>
+              <div className="bp-slot-img">
+                {getTexture(block)}
+              </div>
+              {isPinned(block.id) && (
+                <span className="bp-slot-pin">
+                  <svg width="8" height="8" viewBox="0 0 10 10" fill="#f5c842">
+                    <path d="M5 1l1.2 2.4 2.6.4-1.9 1.8.5 2.6L5 6.5 2.6 8.2l.5-2.6L1.2 3.8l2.6-.4L5 1z"/>
+                  </svg>
+                </span>
               )}
             </div>
-            {isPinned(block.id) && <span className="sb-block-pin">📌</span>}
-          </div>
-        ))}
-        {filteredBlocks.length === 0 && <div className="sb-empty">无结果</div>}
+          )
+        })}
+      </div>
+
+      <div className="bp-status">
+        <span className="bp-status-label">
+          {searchQuery ? (
+            <>
+              <svg width="10" height="10" viewBox="0 0 14 14" fill="currentColor" style={{marginRight: 4}}>
+                <path d="M10 6.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Zm-.691 3.516a4.5 4.5 0 1 1 .707-.707l2.838 2.838a.5.5 0 0 1-.707.707l-2.838-2.838Z"/>
+              </svg>
+              "{searchQuery}"
+            </>
+          ) : tabLabel}
+        </span>
+        <span className="bp-status-count">{filteredBlocks.length} 方块</span>
         {hasMore && (
-          <div className="sb-more" onClick={() => setPage(p => p + 1)}>+{filteredBlocks.length - displayedBlocks.length}</div>
+          <div className="bp-progress">
+            <div className="bp-progress-bar" style={{ width: `${loadProgress}%` }} />
+          </div>
         )}
       </div>
 
-      {selectedBlock && (
-        <div className="sb-footer">
-          <div className="sb-footer-icon">
-            {!failedTextures.has(selectedBlock.id) ? (
-              <img src={getMCTextureURL(selectedBlock.id)} alt="" onError={() => handleTextureError(selectedBlock.id)} />
-            ) : (
-              <div style={{ backgroundColor: selectedBlock.color }} />
+      <div className={`bp-grid ${viewMode}`} ref={gridRef}>
+        {displayedBlocks.map((block, idx) => (
+          <div
+            key={block.id}
+            className={`bp-item ${selectedBlock?.id === block.id ? 'selected' : ''} ${focusIndexRef.current === idx ? 'focused' : ''}`}
+            onClick={() => handleBlockClick(block)}
+            onDoubleClick={() => handleBlockDoubleClick(block)}
+            onContextMenu={e => handleBlockRightClick(e, block)}
+            onMouseEnter={() => setHoveredBlock(block)}
+            onMouseLeave={() => setHoveredBlock(null)}
+          >
+            <div className="bp-item-img">
+              {getTexture(block)}
+            </div>
+            {viewMode === 'list' && (
+              <div className="bp-item-info">
+                <span className="bp-item-name">{block.nameZh}</span>
+                <span className="bp-item-id">{block.id.replace('minecraft:', '')}</span>
+              </div>
+            )}
+            {isPinned(block.id) && (
+              <span className="bp-item-pin">
+                <svg width="8" height="8" viewBox="0 0 10 10" fill="#f5c842">
+                  <path d="M5 1l1.2 2.4 2.6.4-1.9 1.8.5 2.6L5 6.5 2.6 8.2l.5-2.6L1.2 3.8l2.6-.4L5 1z"/>
+                </svg>
+              </span>
             )}
           </div>
-          <div className="sb-footer-info">
-            <div className="sb-footer-name">{selectedBlock.nameZh}</div>
-            <div className="sb-footer-meta">{selectedBlock.id.replace('minecraft:', '')} · 硬度 {selectedBlock.hardness}</div>
+        ))}
+        {filteredBlocks.length === 0 && (
+          <div className="bp-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.3">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+              <path d="M8 11h6"/>
+            </svg>
+            <span>未找到方块</span>
           </div>
-          <div className="sb-footer-btns">
-            <button className={`sb-footer-btn ${isPinned(selectedBlock.id) ? 'active' : ''}`} onClick={() => handleTogglePin()}>
-              {isPinned(selectedBlock.id) ? '📌' : '☆'}
+        )}
+        {hasMore && (
+          <div className="bp-more" onClick={() => setPage(p => p + 1)}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style={{marginRight: 4}}>
+              <path d="M6 1v10M1 6h10"/>
+            </svg>
+            加载更多 (+{filteredBlocks.length - displayedBlocks.length})
+          </div>
+        )}
+      </div>
+
+      {hoveredBlock && (
+        <div className="bp-tooltip">
+          <div className="bp-tooltip-img">{getTexture(hoveredBlock)}</div>
+          <div className="bp-tooltip-info">
+            <div className="bp-tooltip-name">{hoveredBlock.nameZh}</div>
+            <div className="bp-tooltip-id">{hoveredBlock.id.replace('minecraft:', '')}</div>
+            <div className="bp-tooltip-meta">硬度 {hoveredBlock.hardness}</div>
+          </div>
+        </div>
+      )}
+
+      {showPicker !== null && (
+        <div className="bp-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
+          <div className="bp-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
+            <div className="bp-picker-header">
+              <span>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style={{marginRight: 6}}>
+                  <rect x="1" y="1" width="10" height="10" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/>
+                  <rect x="3" y="3" width="6" height="6" fill="currentColor"/>
+                </svg>
+                替换格子 {showPicker + 1}
+              </span>
+              <button onClick={() => { setShowPicker(null); setPickerSearch('') }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                  <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <div className="bp-picker-search">
+              <input type="text" placeholder="搜索方块..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} autoFocus />
+            </div>
+            <div className="bp-picker-grid">
+              {pickerBlocks.map(block => (
+                <div key={block.id} className="bp-picker-item" onClick={() => handlePickBlock(block)}>
+                  <div className="bp-picker-img">
+                    {getTexture(block)}
+                  </div>
+                  <span>{block.nameZh}</span>
+                </div>
+              ))}
+              {pickerBlocks.length === 0 && <div className="bp-picker-empty">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.3">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <span>无匹配结果</span>
+              </div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contextMenu.show && contextMenu.block && (
+        <div className="bp-context" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
+          <div className="bp-context-header">
+            <div className="bp-context-icon">
+              {getTexture(contextMenu.block)}
+            </div>
+            <div>
+              <div className="bp-context-name">{contextMenu.block.nameZh}</div>
+              <div className="bp-context-id">{contextMenu.block.id.replace('minecraft:', '')}</div>
+            </div>
+          </div>
+          <div className="bp-context-sep" />
+          <button onClick={() => { if (contextMenu.block) { setSelectedBlock(contextMenu.block); setContextMenu({ show: false, x: 0, y: 0, block: null }) } }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{marginRight: 6}}>
+              <path d="M2 5l2 2 4-4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+            </svg>
+            选择此方块
+          </button>
+          <button onClick={() => { if (contextMenu.block) { handleAddToPalette(contextMenu.block); setContextMenu({ show: false, x: 0, y: 0, block: null }) } }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{marginRight: 6}}>
+              <circle cx="3" cy="3" r="2"/>
+              <circle cx="7" cy="3" r="2"/>
+              <circle cx="5" cy="7" r="2"/>
+            </svg>
+            {isInPalette(contextMenu.block.id) ? '✓ 已在调色板' : '+ 添加到调色板'}
+          </button>
+          <button onClick={() => { if (contextMenu.block) { handleAddToQuickbar(contextMenu.block); setContextMenu({ show: false, x: 0, y: 0, block: null }) } }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{marginRight: 6}}>
+              <rect x="1" y="1" width="8" height="8" rx="1" fill="none" stroke="currentColor"/>
+              <rect x="3" y="3" width="4" height="4" fill="currentColor"/>
+            </svg>
+            {isInQuickbar(contextMenu.block.id) ? '✓ 已在快捷栏' : '+ 添加到快捷栏'}
+          </button>
+          <button onClick={() => { if (contextMenu.block) { handleTogglePin(contextMenu.block); setContextMenu({ show: false, x: 0, y: 0, block: null }) } }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{marginRight: 6}}>
+              <path d="M5 1l1.2 2.4 2.6.4-1.9 1.8.5 2.6L5 6.5 2.6 8.2l.5-2.6L1.2 3.8l2.6-.4L5 1z"/>
+            </svg>
+            {isPinned(contextMenu.block.id) ? '★ 取消收藏' : '☆ 收藏'}
+          </button>
+          <div className="bp-context-sep" />
+          <button onClick={() => { if (contextMenu.block) { handleCopyId(contextMenu.block.id); setContextMenu({ show: false, x: 0, y: 0, block: null }) } }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{marginRight: 6}}>
+              <rect x="3" y="1" width="6" height="7" rx="1" fill="none" stroke="currentColor"/>
+              <rect x="1" y="3" width="6" height="7" rx="1" fill="var(--bg-3)" stroke="currentColor"/>
+            </svg>
+            {copiedId === contextMenu.block.id ? '✓ 已复制' : '📋 复制 ID'}
+          </button>
+        </div>
+      )}
+
+      {selectedBlock && !hoveredBlock && (
+        <div className="bp-footer">
+          <div className="bp-footer-icon">
+            {getTexture(selectedBlock)}
+          </div>
+          <div className="bp-footer-info">
+            <div className="bp-footer-name">{selectedBlock.nameZh}</div>
+            <div className="bp-footer-meta">{selectedBlock.id.replace('minecraft:', '')} · 硬度 {selectedBlock.hardness}</div>
+          </div>
+          <div className="bp-footer-actions">
+            <button
+              className={`bp-action ${isPinned(selectedBlock.id) ? 'active' : ''}`}
+              onClick={() => handleTogglePin()}
+              title={isPinned(selectedBlock.id) ? '取消收藏' : '收藏'}
+            >
+              {isPinned(selectedBlock.id) ? '★' : '☆'}
             </button>
-            <button className={`sb-footer-btn ${isInPalette(selectedBlock.id) ? 'in' : ''}`} onClick={() => handleAddToPalette()}>
-              <span>{isInPalette(selectedBlock.id) ? '✓' : '🎨'}</span>
+            <button
+              className={`bp-action ${isInPalette(selectedBlock.id) ? 'active' : ''}`}
+              onClick={() => handleAddToPalette()}
+              title={isInPalette(selectedBlock.id) ? '已在调色板' : '添加到调色板'}
+            >
+              <svg width="14" height="14" viewBox="0 0 10 10" fill="currentColor">
+                <circle cx="3" cy="3" r="2"/>
+                <circle cx="7" cy="3" r="2"/>
+                <circle cx="5" cy="7" r="2"/>
+              </svg>
             </button>
-            <button className={`sb-footer-btn ${isInQuickbar(selectedBlock.id) ? 'in' : ''}`} onClick={() => handleAddToQuickbar()}>
-              <span>{isInQuickbar(selectedBlock.id) ? '✓' : '+'}</span>
+            <button
+              className={`bp-action ${isInQuickbar(selectedBlock.id) ? 'active' : ''}`}
+              onClick={() => handleAddToQuickbar()}
+              title={isInQuickbar(selectedBlock.id) ? '已在快捷栏' : '添加到快捷栏'}
+            >
+              <svg width="14" height="14" viewBox="0 0 10 10" fill="currentColor">
+                <rect x="1" y="1" width="8" height="8" rx="1" fill="none" stroke="currentColor"/>
+                <rect x="3" y="3" width="4" height="4" fill="currentColor"/>
+              </svg>
             </button>
           </div>
         </div>
       )}
 
       <style>{`
-        .sb-root {
-          --bg-deep: #0d0d0d;
-          --bg-base: #1a1a1a;
-          --bg-surface: #242424;
-          --bg-elevated: #2e2e2e;
-          --bg-hover: #383838;
-          --border: #3a3a3a;
-          --border-light: #4a4a4a;
-          --text-primary: #e8e8e8;
-          --text-secondary: #a0a0a0;
-          --text-hint: #666;
-          --accent: #5c9bd4;
-          --accent-dim: #3a5f89;
-          --gold: #d4a84b;
-          
+        .bp-root {
+          --mc-black: #0d0d0d;
+          --mc-dark: #191919;
+          --mc-gray: #363636;
+          --mc-light: #8b8b8b;
+          --mc-white: #ffffff;
+          --mc-blue: #6388d4;
+          --mc-gold: #f5c842;
+          --bg-0: #0a0a0a;
+          --bg-1: #141414;
+          --bg-2: #1e1e1e;
+          --bg-3: #2a2a2a;
+          --bg-4: #383838;
+          --border: #333333;
+          --border-light: #444444;
+          --text-1: #e8e8e8;
+          --text-2: #a0a0a0;
+          --text-3: #666666;
+          --accent: #4a8fd4;
+          --accent-dim: #2d5a8a;
+          --gold: #f5c842;
+
           display: flex;
           flex-direction: column;
           height: 100%;
-          background: var(--bg-deep);
-          color: var(--text-primary);
-          font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+          background: var(--mc-black);
+          color: var(--text-1);
+          font-family: 'Minecraft', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           user-select: none;
           position: relative;
+          font-size: 12px;
+          image-rendering: pixelated;
         }
 
-        .sb-header {
+        .bp-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 10px 14px;
-          background: var(--bg-base);
+          padding: 12px 14px;
+          background: linear-gradient(180deg, var(--mc-dark) 0%, var(--bg-1) 100%);
           border-bottom: 1px solid var(--border);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
 
-        .sb-title { display: flex; align-items: center; gap: 8px; }
-        .sb-title-icon { font-size: 16px; }
-        .sb-title-text { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-        .sb-title-count {
-          font-size: 10px;
-          padding: 2px 6px;
-          background: var(--bg-surface);
+        .bp-title { display: flex; align-items: center; gap: 10px; }
+        .bp-icon { display: flex; align-items: center; }
+        .bp-name { font-size: 13px; font-weight: 600; letter-spacing: 0.5px; }
+        .bp-badge {
+          font-size: 9px;
+          padding: 2px 7px;
+          background: var(--bg-3);
+          border: 1px solid var(--border);
           border-radius: 10px;
-          color: var(--text-hint);
+          color: var(--text-3);
+          font-family: monospace;
         }
 
-        .sb-help-btn {
-          width: 22px;
-          height: 22px;
-          background: var(--bg-surface);
+        .bp-header-actions { display: flex; gap: 6px; }
+        .bp-icon-btn {
+          width: 26px;
+          height: 26px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-2);
           border: 1px solid var(--border);
           border-radius: 4px;
-          color: var(--text-hint);
+          color: var(--text-3);
           cursor: pointer;
           font-size: 11px;
-          font-weight: 600;
-          transition: all 0.15s;
+          transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .sb-help-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+        .bp-icon-btn:hover { background: var(--bg-3); color: var(--text-2); transform: translateY(-1px); }
+        .bp-icon-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; box-shadow: 0 0 8px rgba(74, 143, 212, 0.3); }
 
-        .sb-help {
-          padding: 10px 14px;
-          background: var(--bg-base);
+        .bp-help {
+          padding: 12px 14px;
+          background: linear-gradient(180deg, var(--mc-dark) 0%, var(--bg-1) 100%);
           border-bottom: 1px solid var(--border);
           display: grid;
           grid-template-columns: auto 1fr;
-          gap: 4px 10px;
+          gap: 6px 16px;
           font-size: 11px;
         }
-        .sb-help-title {
+        .bp-help-title {
           grid-column: 1 / -1;
           font-size: 10px;
-          color: var(--text-hint);
+          color: var(--text-3);
           text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-bottom: 4px;
+          letter-spacing: 1px;
+          margin-bottom: 2px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
-        .sb-help-row { display: contents; }
-        .sb-help-row kbd {
-          background: var(--bg-surface);
+        .bp-help-title::before {
+          content: '';
+          width: 16px;
+          height: 1px;
+          background: var(--border);
+        }
+        .bp-help-row { display: contents; }
+        .bp-help-row kbd {
+          background: var(--bg-3);
           border: 1px solid var(--border-light);
-          padding: 1px 5px;
+          border-bottom-width: 2px;
+          padding: 2px 6px;
           border-radius: 3px;
           font-size: 10px;
           font-family: inherit;
-          color: var(--text-secondary);
+          color: var(--text-2);
+          box-shadow: 0 1px 0 var(--border);
         }
-        .sb-help-row span { color: var(--text-hint); }
+        .bp-help-row span { color: var(--text-3); display: flex; align-items: center; }
 
-        .sb-palette-zone, .sb-quickbar-zone {
-          padding: 8px 14px;
-          background: var(--bg-base);
-          border-bottom: 1px solid var(--border);
-        }
-
-        .sb-zone-label {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 6px;
-          font-size: 10px;
-          color: var(--text-hint);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .sb-zone-hint { color: var(--accent); font-size: 9px; }
-
-        .sb-palette {
-          display: flex;
-          gap: 3px;
-          flex-wrap: wrap;
-        }
-
-        .sb-palette-item, .sb-slot {
-          position: relative;
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
-          border-radius: 4px;
-          cursor: pointer;
-          transition: all 0.12s;
-        }
-
-        .sb-palette-item {
-          width: 30px;
-          height: 30px;
-        }
-        .sb-slot {
-          width: 36px;
-          height: 36px;
-        }
-
-        .sb-palette-item:hover, .sb-slot:hover {
-          border-color: var(--border-light);
-          transform: scale(1.08);
-        }
-
-        .sb-palette-item.active, .sb-slot.active {
-          border-color: var(--accent);
-          box-shadow: 0 0 0 1px var(--accent-dim);
-        }
-
-        .sb-palette-item.drop-target, .sb-slot.drop-target {
-          border-color: var(--gold);
-          border-style: dashed;
-        }
-
-        .sb-item-img, .sb-slot-img {
-          position: absolute;
-          inset: 0;
-          border-radius: 3px;
-          overflow: hidden;
-        }
-
-        .sb-item-img img, .sb-slot-img img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
-        }
-
-        .sb-item-img div, .sb-slot-img div {
-          position: absolute;
-          inset: 0;
-        }
-
-        .sb-slot-num {
-          position: absolute;
-          top: 2px;
-          left: 3px;
-          font-size: 9px;
-          font-weight: 700;
-          color: #fff;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.9);
-          z-index: 2;
-        }
-
-        .sb-slot-pin {
-          position: absolute;
-          top: 0;
-          right: 0;
-          font-size: 8px;
-          z-index: 2;
-        }
-
-        .sb-palette-empty {
-          width: 100%;
-          text-align: center;
-          font-size: 10px;
-          color: var(--text-hint);
-          padding: 6px;
-        }
-
-        .sb-quickbar { display: flex; gap: 2px; justify-content: center; }
-
-        .sb-search-zone {
-          padding: 8px 14px;
-          background: var(--bg-deep);
+        .bp-toolbar {
+          padding: 10px 14px;
+          background: var(--bg-1);
           border-bottom: 1px solid var(--border);
           position: relative;
         }
 
-        .sb-search-box {
+        .bp-search {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 7px 10px;
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
+          gap: 10px;
+          padding: 8px 12px;
+          background: var(--mc-dark);
+          border: 2px solid var(--border);
           border-radius: 6px;
-          transition: border-color 0.15s;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
         }
-        .sb-search-box:focus-within {
+        .bp-search:focus-within {
           border-color: var(--accent);
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 0 3px rgba(74, 143, 212, 0.15);
         }
 
-        .sb-search-icon { font-size: 12px; opacity: 0.5; }
-        .sb-search-box input {
+        .bp-search-icon { color: var(--text-3); flex-shrink: 0; }
+        .bp-search input {
           flex: 1;
           background: transparent;
           border: none;
           outline: none;
-          color: var(--text-primary);
+          color: var(--text-1);
           font-size: 12px;
           font-family: inherit;
         }
-        .sb-search-box input::placeholder { color: var(--text-hint); }
-
-        .sb-search-clear {
-          width: 16px;
-          height: 16px;
-          background: var(--bg-elevated);
+        .bp-search input::placeholder { color: var(--text-3); }
+        .bp-search-clear {
+          width: 18px;
+          height: 18px;
+          background: var(--bg-3);
           border: 1px solid var(--border);
           border-radius: 3px;
-          color: var(--text-hint);
+          color: var(--text-3);
           cursor: pointer;
           font-size: 10px;
           padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s;
         }
-        .sb-search-clear:hover { background: var(--bg-hover); }
+        .bp-search-clear:hover { background: var(--bg-4); color: var(--text-2); }
 
-        .sb-history {
+        .bp-history {
           position: absolute;
           top: 100%;
           left: 14px;
           right: 14px;
-          background: var(--bg-surface);
+          background: var(--mc-dark);
           border: 1px solid var(--border);
           border-radius: 6px;
           z-index: 50;
           overflow: hidden;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+          margin-top: 4px;
         }
-
-        .sb-history-title {
-          padding: 6px 10px;
+        .bp-history-title {
+          padding: 8px 12px;
           font-size: 10px;
-          color: var(--text-hint);
-          background: var(--bg-elevated);
+          color: var(--text-3);
+          background: var(--bg-2);
           text-transform: uppercase;
-          letter-spacing: 0.5px;
+          letter-spacing: 1px;
+          border-bottom: 1px solid var(--border);
         }
-
-        .sb-history-item {
+        .bp-history-item {
           display: flex;
           align-items: center;
           gap: 8px;
           width: 100%;
-          padding: 7px 10px;
+          padding: 8px 12px;
           background: transparent;
           border: none;
-          color: var(--text-primary);
+          color: var(--text-1);
           font-size: 12px;
           cursor: pointer;
           text-align: left;
           font-family: inherit;
           transition: background 0.1s;
         }
-        .sb-history-item:hover { background: var(--bg-hover); }
-        .sb-history-item span:first-child { opacity: 0.5; font-size: 10px; }
+        .bp-history-item:hover { background: var(--bg-3); }
+        .bp-history-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        .sb-tabs {
+        .bp-tabs {
           display: flex;
-          gap: 2px;
-          padding: 6px 14px;
-          background: var(--bg-deep);
+          align-items: center;
+          gap: 4px;
+          padding: 8px 14px;
+          background: var(--bg-1);
           border-bottom: 1px solid var(--border);
           overflow-x: auto;
+          scrollbar-width: none;
         }
+        .bp-tabs::-webkit-scrollbar { display: none; }
 
-        .sb-tab {
-          padding: 5px 10px;
+        .bp-tab {
+          padding: 6px 12px;
           font-size: 11px;
-          color: var(--text-secondary);
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
+          color: var(--text-2);
+          background: transparent;
+          border: 1px solid transparent;
           border-radius: 4px;
           cursor: pointer;
           white-space: nowrap;
           font-family: inherit;
-          transition: all 0.12s;
+          transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+          display: flex;
+          align-items: center;
+          gap: 5px;
         }
-        .sb-tab:hover { background: var(--bg-elevated); color: var(--text-primary); }
-        .sb-tab.active {
-          background: var(--accent-dim);
+        .bp-tab:hover { background: var(--bg-2); color: var(--text-1); }
+        .bp-tab.active {
+          background: linear-gradient(180deg, var(--accent-dim) 0%, rgba(45, 90, 138, 0.8) 100%);
           border-color: var(--accent);
           color: #fff;
+          box-shadow: 0 2px 8px rgba(74, 143, 212, 0.25);
         }
+        .bp-tab svg { opacity: 0.7; }
+        .bp-tab.active svg { opacity: 1; }
+        .bp-tab-count {
+          font-size: 9px;
+          padding: 1px 5px;
+          background: rgba(0,0,0,0.3);
+          border-radius: 8px;
+          opacity: 0.8;
+        }
+        .bp-tab-sep { flex: 1; min-width: 1px; }
 
-        .sb-grid-header {
-          padding: 6px 14px;
-          font-size: 10px;
-          color: var(--text-hint);
-          background: var(--bg-base);
+        .bp-quickbar {
+          display: flex;
+          gap: 4px;
+          padding: 10px 14px;
+          background: linear-gradient(180deg, var(--bg-1) 0%, var(--mc-black) 100%);
           border-bottom: 1px solid var(--border);
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
         }
 
-        .sb-grid {
-          flex: 1;
-          overflow-y: auto;
-          padding: 6px;
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
-          gap: 3px;
-          align-content: start;
-          background: var(--bg-deep);
-        }
-
-        .sb-grid::-webkit-scrollbar { width: 5px; }
-        .sb-grid::-webkit-scrollbar-track { background: var(--bg-base); }
-        .sb-grid::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 3px; }
-
-        .sb-block {
+        .bp-slot {
           position: relative;
-          aspect-ratio: 1;
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
-          border-radius: 3px;
+          width: 40px;
+          height: 40px;
+          background: var(--mc-dark);
+          border: 2px solid var(--border);
+          border-radius: 4px;
           cursor: pointer;
-          transition: all 0.1s;
+          transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.05),
+            0 2px 4px rgba(0,0,0,0.3);
         }
-        .sb-block:hover { border-color: var(--border-light); transform: scale(1.1); z-index: 1; }
-        .sb-block.selected { border-color: var(--accent); }
-
-        .sb-block-img {
+        .bp-slot:hover {
+          border-color: var(--border-light);
+          transform: translateY(-2px);
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.05),
+            0 4px 12px rgba(0,0,0,0.5);
+        }
+        .bp-slot.active {
+          border-color: var(--mc-blue);
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.05),
+            0 0 0 2px rgba(99, 136, 212, 0.3),
+            0 4px 12px rgba(0,0,0,0.5);
+        }
+        .bp-slot.drop {
+          border-color: var(--mc-gold);
+          border-style: dashed;
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.05),
+            0 0 0 2px rgba(245, 200, 66, 0.3);
+        }
+        .bp-slot-num {
+          position: absolute;
+          top: 2px;
+          left: 3px;
+          font-size: 10px;
+          font-weight: 700;
+          color: #fff;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.5);
+          z-index: 3;
+          font-family: 'Minecraft', monospace;
+        }
+        .bp-slot-img {
           position: absolute;
           inset: 0;
           border-radius: 2px;
           overflow: hidden;
         }
-        .sb-block-img img {
+        .bp-slot-img img,
+        .bp-slot-img .bp-fallback {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
-          image-rendering: pixelated;
           z-index: 1;
         }
-        .sb-block-img div { position: absolute; inset: 0; }
-
-        .sb-block-pin {
+        .bp-slot-img .bp-fallback { border-radius: 2px; }
+        .bp-slot-pin {
           position: absolute;
-          top: 0;
-          right: 0;
-          font-size: 8px;
-          z-index: 2;
+          bottom: 1px;
+          right: 2px;
+          z-index: 4;
+          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
         }
 
-        .sb-empty {
-          grid-column: 1 / -1;
-          text-align: center;
-          padding: 20px;
-          color: var(--text-hint);
-          font-size: 11px;
-        }
-
-        .sb-more {
-          grid-column: 1 / -1;
-          text-align: center;
-          padding: 6px;
-          background: var(--bg-surface);
-          color: var(--text-secondary);
-          font-size: 10px;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-        .sb-more:hover { background: var(--bg-elevated); }
-
-        .sb-footer {
+        .bp-status {
           display: flex;
           align-items: center;
           gap: 10px;
           padding: 8px 14px;
-          background: var(--bg-base);
-          border-top: 1px solid var(--border);
+          background: var(--bg-1);
+          border-bottom: 1px solid var(--border);
+          position: relative;
+          min-height: 28px;
+        }
+        .bp-status-label {
+          font-size: 11px;
+          color: var(--text-2);
+          display: flex;
+          align-items: center;
+        }
+        .bp-status-count { font-size: 10px; color: var(--text-3); font-family: monospace; }
+        .bp-progress {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: var(--bg-3);
+          overflow: hidden;
+        }
+        .bp-progress-bar {
+          height: 100%;
+          background: linear-gradient(90deg, var(--accent-dim) 0%, var(--accent) 100%);
+          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 0 8px var(--accent);
         }
 
-        .sb-footer-icon {
+        .bp-grid {
+          flex: 1;
+          overflow-y: auto;
+          padding: 8px;
+          background: var(--mc-black);
+        }
+        .bp-grid.grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+          gap: 4px;
+          align-content: start;
+        }
+        .bp-grid.list {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+        .bp-grid::-webkit-scrollbar { width: 8px; }
+        .bp-grid::-webkit-scrollbar-track { background: var(--mc-dark); }
+        .bp-grid::-webkit-scrollbar-thumb {
+          background: var(--bg-3);
+          border-radius: 4px;
+          border: 2px solid var(--mc-dark);
+        }
+        .bp-grid::-webkit-scrollbar-thumb:hover { background: var(--bg-4); }
+
+        .bp-item {
           position: relative;
-          width: 36px;
-          height: 36px;
-          background: var(--bg-surface);
+          background: var(--mc-dark);
+          border: 2px solid transparent;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .bp-grid.grid .bp-item { aspect-ratio: 1; }
+        .bp-grid.list .bp-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px;
+        }
+        .bp-item:hover {
+          border-color: var(--border-light);
+          transform: scale(1.08);
+          z-index: 5;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .bp-item.selected {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px rgba(74, 143, 212, 0.25), 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .bp-item.focused {
+          outline: 2px solid var(--accent);
+          outline-offset: 1px;
+          box-shadow: 0 0 0 4px rgba(74, 143, 212, 0.15), 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .bp-item-img {
+          position: relative;
+          border-radius: 2px;
+          overflow: hidden;
+        }
+        .bp-grid.grid .bp-item-img { inset: 0; }
+        .bp-grid.list .bp-item-img {
+          width: 32px;
+          height: 32px;
+          flex-shrink: 0;
+          border: 1px solid var(--border);
+        }
+        .bp-item-img img,
+        .bp-item-img .bp-fallback {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          z-index: 1;
+        }
+        .bp-item-img .bp-fallback { border-radius: 2px; }
+
+        .bp-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+        .bp-item-name { font-size: 12px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bp-item-id { font-size: 10px; color: var(--text-3); font-family: monospace; }
+
+        .bp-item-pin {
+          position: absolute;
+          top: 1px;
+          right: 1px;
+          z-index: 6;
+          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
+        }
+
+        .bp-empty {
+          grid-column: 1 / -1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          padding: 40px 20px;
+          color: var(--text-3);
+          font-size: 12px;
+        }
+
+        .bp-more {
+          grid-column: 1 / -1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 12px;
+          background: var(--bg-2);
+          color: var(--text-2);
+          font-size: 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s;
+          border: 1px dashed var(--border);
+        }
+        .bp-more:hover {
+          background: var(--bg-3);
+          color: var(--text-1);
+          border-color: var(--border-light);
+        }
+
+        .bp-tooltip {
+          position: fixed;
+          bottom: 80px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          background: var(--mc-dark);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          z-index: 300;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+          animation: tooltipIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes tooltipIn {
+          from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+          to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        .bp-tooltip-img {
+          position: relative;
+          width: 40px;
+          height: 40px;
+          background: var(--bg-2);
           border: 1px solid var(--border);
           border-radius: 4px;
           overflow: hidden;
           flex-shrink: 0;
         }
-        .sb-footer-icon img {
+        .bp-tooltip-img img,
+        .bp-tooltip-img .bp-fallback {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
         }
-        .sb-footer-icon div { position: absolute; inset: 0; }
+        .bp-tooltip-info { display: flex; flex-direction: column; gap: 2px; }
+        .bp-tooltip-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
+        .bp-tooltip-id { font-size: 10px; color: var(--text-3); font-family: monospace; }
+        .bp-tooltip-meta { font-size: 10px; color: var(--text-3); }
 
-        .sb-footer-info { flex: 1; min-width: 0; }
-        .sb-footer-name {
-          font-size: 12px;
-          font-weight: 600;
-          color: var(--text-primary);
-          white-space: nowrap;
+        .bp-footer {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          background: linear-gradient(180deg, var(--bg-1) 0%, var(--mc-dark) 100%);
+          border-top: 1px solid var(--border);
+        }
+
+        .bp-footer-icon {
+          position: relative;
+          width: 40px;
+          height: 40px;
+          background: var(--mc-dark);
+          border: 2px solid var(--border);
+          border-radius: 4px;
           overflow: hidden;
-          text-overflow: ellipsis;
+          flex-shrink: 0;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
         }
-        .sb-footer-meta { font-size: 9px; color: var(--text-hint); font-family: monospace; margin-top: 2px; }
+        .bp-footer-icon img,
+        .bp-footer-icon .bp-fallback {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
 
-        .sb-footer-btns { display: flex; gap: 4px; }
-        .sb-footer-btn {
-          width: 28px;
-          height: 28px;
-          font-size: 13px;
-          background: var(--bg-surface);
+        .bp-footer-info { flex: 1; min-width: 0; }
+        .bp-footer-name { font-size: 13px; font-weight: 600; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bp-footer-meta { font-size: 10px; color: var(--text-3); font-family: monospace; margin-top: 3px; }
+
+        .bp-footer-actions { display: flex; gap: 6px; }
+        .bp-action {
+          width: 32px;
+          height: 32px;
+          font-size: 14px;
+          background: var(--bg-2);
           border: 1px solid var(--border);
           border-radius: 4px;
-          color: var(--text-hint);
+          color: var(--text-3);
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: all 0.12s;
+          transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .sb-footer-btn:hover { background: var(--bg-elevated); }
-        .sb-footer-btn.active { color: var(--gold); }
-        .sb-footer-btn.in { color: var(--accent); }
+        .bp-action:hover {
+          background: var(--bg-3);
+          color: var(--text-2);
+          transform: translateY(-1px);
+        }
+        .bp-action.active { color: var(--mc-gold); }
 
-        .sb-picker-overlay {
+        .bp-picker-overlay {
           position: absolute;
           inset: 0;
-          background: rgba(0,0,0,0.75);
+          background: rgba(0,0,0,0.85);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 100;
+          animation: fadeIn 0.15s ease-out;
         }
-
-        .sb-picker {
-          width: 260px;
-          max-height: 320px;
-          background: var(--bg-surface);
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .bp-picker {
+          width: 280px;
+          max-height: 360px;
+          background: var(--mc-dark);
           border: 1px solid var(--border);
           border-radius: 8px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+          box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+          animation: scaleIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
-
-        .sb-picker-title {
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .bp-picker-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 10px 12px;
-          background: var(--bg-elevated);
+          padding: 12px 14px;
+          background: var(--bg-2);
           font-size: 12px;
           font-weight: 600;
-        }
-
-        .sb-picker-close {
-          width: 18px;
-          height: 18px;
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
-          border-radius: 3px;
-          color: var(--text-secondary);
-          cursor: pointer;
-          font-size: 12px;
-          padding: 0;
-        }
-        .sb-picker-close:hover { background: var(--bg-hover); }
-
-        .sb-picker-search {
-          padding: 8px;
           border-bottom: 1px solid var(--border);
         }
-        .sb-picker-search input {
-          width: 100%;
-          padding: 6px 8px;
-          background: var(--bg-deep);
+        .bp-picker-header button {
+          width: 20px;
+          height: 20px;
+          background: var(--bg-3);
           border: 1px solid var(--border);
           border-radius: 4px;
-          color: var(--text-primary);
-          font-size: 11px;
+          color: var(--text-2);
+          cursor: pointer;
+          font-size: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s;
+        }
+        .bp-picker-header button:hover { background: var(--bg-4); color: var(--text-1); }
+        .bp-picker-search {
+          padding: 10px;
+          border-bottom: 1px solid var(--border);
+        }
+        .bp-picker-search input {
+          width: 100%;
+          padding: 8px 10px;
+          background: var(--bg-1);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-1);
+          font-size: 12px;
           outline: none;
           font-family: inherit;
+          transition: border-color 0.15s;
         }
-        .sb-picker-search input:focus { border-color: var(--accent); }
-
-        .sb-picker-grid {
+        .bp-picker-search input:focus { border-color: var(--accent); }
+        .bp-picker-grid {
           flex: 1;
           overflow-y: auto;
-          padding: 6px;
+          padding: 8px;
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 4px;
+          gap: 6px;
         }
-
-        .sb-picker-cell {
+        .bp-picker-item {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 3px;
-          padding: 4px;
-          background: var(--bg-deep);
+          gap: 4px;
+          padding: 6px;
+          background: var(--bg-1);
           border: 1px solid var(--border);
           border-radius: 4px;
           cursor: pointer;
+          transition: all 0.15s;
         }
-        .sb-picker-cell:hover { background: var(--bg-hover); }
-
-        .sb-picker-img {
+        .bp-picker-item:hover {
+          background: var(--bg-3);
+          border-color: var(--accent);
+          transform: scale(1.05);
+        }
+        .bp-picker-img {
           position: relative;
-          width: 30px;
-          height: 30px;
-          background: var(--bg-surface);
+          width: 32px;
+          height: 32px;
+          background: var(--mc-dark);
           border-radius: 3px;
           overflow: hidden;
         }
-        .sb-picker-img img {
+        .bp-picker-img img,
+        .bp-picker-img .bp-fallback {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
         }
-        .sb-picker-img div { position: absolute; inset: 0; }
-        .sb-picker-cell span { font-size: 7px; color: var(--text-hint); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-picker-empty { grid-column: 1 / -1; text-align: center; padding: 20px; color: var(--text-hint); }
+        .bp-picker-item span {
+          font-size: 8px;
+          color: var(--text-3);
+          text-align: center;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .bp-picker-empty {
+          grid-column: 1 / -1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 30px;
+          color: var(--text-3);
+        }
 
-        .sb-context {
+        .bp-context {
           position: fixed;
-          min-width: 170px;
-          background: var(--bg-surface);
+          min-width: 180px;
+          background: var(--mc-dark);
           border: 1px solid var(--border);
           border-radius: 6px;
           z-index: 200;
           overflow: hidden;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+          animation: scaleIn 0.15s cubic-bezier(0.4, 0, 0.2, 1);
         }
-
-        .sb-context-header {
+        .bp-context-header {
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          background: var(--bg-elevated);
+          gap: 12px;
+          padding: 12px 14px;
+          background: var(--bg-2);
+          border-bottom: 1px solid var(--border);
         }
-        .sb-context-icon {
+        .bp-context-icon {
           position: relative;
-          width: 32px;
-          height: 32px;
-          background: var(--bg-surface);
+          width: 36px;
+          height: 36px;
+          background: var(--bg-1);
           border: 1px solid var(--border);
           border-radius: 4px;
           overflow: hidden;
+          flex-shrink: 0;
         }
-        .sb-context-icon img {
+        .bp-context-icon img,
+        .bp-context-icon .bp-fallback {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
         }
-        .sb-context-icon div { position: absolute; inset: 0; }
-        .sb-context-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-        .sb-context-id { font-size: 9px; color: var(--text-hint); font-family: monospace; margin-top: 2px; }
-
-        .sb-context-sep { height: 1px; background: var(--border); margin: 2px 0; }
-
-        .sb-context-item {
-          display: block;
+        .bp-context-name { font-size: 12px; font-weight: 600; color: var(--text-1); }
+        .bp-context-id { font-size: 10px; color: var(--text-3); font-family: monospace; margin-top: 2px; }
+        .bp-context-sep { height: 1px; background: var(--border); margin: 2px 0; }
+        .bp-context button {
+          display: flex;
+          align-items: center;
           width: 100%;
-          padding: 8px 12px;
+          padding: 10px 14px;
           background: transparent;
           border: none;
-          color: var(--text-primary);
-          font-size: 11px;
+          color: var(--text-1);
+          font-size: 12px;
           cursor: pointer;
           text-align: left;
           font-family: inherit;
           transition: background 0.1s;
         }
-        .sb-context-item:hover { background: var(--bg-hover); }
+        .bp-context button:hover { background: var(--bg-3); }
       `}</style>
     </div>
   )
