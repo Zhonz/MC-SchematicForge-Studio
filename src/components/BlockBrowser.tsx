@@ -1026,6 +1026,7 @@ export function BlockBrowser() {
           </div>
           <div className="bp-preview-info">
             <div className="bp-preview-name">{getHighlightedText(previewBlock.nameZh, searchQuery)}</div>
+            <div className="bp-preview-name-en">{getHighlightedText(previewBlock.name, searchQuery)}</div>
             <div className="bp-preview-id">{previewBlock.id.replace('minecraft:', '')}</div>
             <div className="bp-preview-meta">
               <span className={`bp-preview-cat bp-cat-${previewBlock.category}`}>
@@ -1803,7 +1804,8 @@ export function BlockBrowser() {
         }
         .bp-preview-info { display: flex; flex-direction: column; gap: 4px; }
         .bp-preview-name { font-size: 14px; font-weight: 600; color: var(--text-1); }
-        .bp-preview-id { font-size: 11px; color: var(--text-3); font-family: monospace; }
+        .bp-preview-name-en { font-size: 11px; color: var(--text-3); margin-top: 2px; font-style: italic; }
+        .bp-preview-id { font-size: 11px; color: var(--text-3); font-family: monospace; margin-top: 4px; }
         .bp-preview-meta { display: flex; gap: 8px; font-size: 10px; color: var(--text-2); margin-top: 4px; }
         .bp-preview-cat {
           padding: 2px 6px;
