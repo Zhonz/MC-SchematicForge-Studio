@@ -1,0 +1,118 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+permissions:
+  contents: write
+
+jobs:
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Get version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: dist/
+          retention-days: 30
+
+  release-web:
+    name: Create Web Release
+    needs: build-web
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download web build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: dist/
+
+      - name: Create archives
+        run: |
+          cd dist
+          zip -r ../schematicforge-web.zip .
+          cd ..
+          tar -czf schematicforge-web.tar.gz -C dist .
+
+      - name: Get changelog
+        id: changelog
+        run: |
+          CHANGELOG=$(git log --pretty=format:"- %s" -20)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Delete existing draft release
+        run: |
+          gh release delete "v${{ needs.build-web.outputs.version }}" --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build-web.outputs.version }}
+          name: MC投影工坊 v${{ needs.build-web.outputs.version }}
+          body: |
+            ## MC投影工坊 SchematicForge Studio v${{ needs.build-web.outputs.version }}
+
+            新一代 Minecraft 智能投影生成与编辑工具
+
+            ### 核心功能
+            - AI 智能建筑生成
+            - 3D 场景编辑器（Three.js 渲染）
+            - 红石电路模拟
+            - Minecraft Wiki 集成
+            - 投影文件导出（Litematica/Schematic）
+
+            ### 安装说明
+            - **Web 版**: 下载 `schematicforge-web.zip` 或 `schematicforge-web.tar.gz`
+            - 解压后直接用浏览器打开 `index.html` 即可使用
+
+            ### 更新日志
+            ${{ steps.changelog.outputs.changelog }}
+          files: |
+            schematicforge-web.zip
+            schematicforge-web.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
