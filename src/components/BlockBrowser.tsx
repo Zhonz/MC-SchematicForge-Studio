@@ -290,6 +290,27 @@ export function BlockBrowser() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [favorites, setSelectedBlock, displayedBlocks, viewMode])
 
+  const preloadTextures = useCallback((blocks: BlockData[], count = 20) => {
+    const toPreload = blocks.slice(0, count).filter(b => !failedTextures.has(b.id))
+    toPreload.forEach(block => {
+      const img = new Image()
+      img.src = getMCTextureURL(block.id)
+    })
+  }, [failedTextures])
+
+  useEffect(() => {
+    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeTab)) {
+      preloadTextures(filteredBlocks, 40)
+    }
+  }, [filteredBlocks, preloadTextures])
+
+  useEffect(() => {
+    if (focusIndexRef.current >= 0 && displayedBlocks.length > 0) {
+      const nextBlocks = displayedBlocks.slice(focusIndexRef.current, focusIndexRef.current + 10)
+      preloadTextures(nextBlocks, 10)
+    }
+  }, [focusIndexRef.current, displayedBlocks, preloadTextures])
+
   useEffect(() => {
     if (selectedBlock) {
       setRecent(prev => {
