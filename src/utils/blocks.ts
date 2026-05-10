@@ -1,4 +1,4 @@
-import { BlockData } from '@/types'
+import { BlockData, BlockCategory } from '@/types'
 
 export const BLOCKS: BlockData[] = [
   // Building blocks
