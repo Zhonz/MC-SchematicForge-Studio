@@ -442,10 +442,6 @@ export function SceneViewport() {
         const color = getCategoryColor(structure.category)
         const ghost = new StructureGhost(structure.size, structure.center, color)
         
-        if (structure.blocks) {
-          ghost.addBlocks(structure.blocks)
-        }
-        
         structure.spawners.forEach(spawner => {
           ghost.addSpawnerMarker(
             spawner.position,
