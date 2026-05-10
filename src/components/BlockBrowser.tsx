@@ -51,6 +51,20 @@ function loadPinned(): string[] {
   return []
 }
 
+interface ContextMenuState {
+  show: boolean
+  x: number
+  y: number
+  block: BlockData | null
+}
+
+interface TooltipState {
+  show: boolean
+  x: number
+  y: number
+  block: BlockData | null
+}
+
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
   const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent' | 'pinned'>('all')
@@ -62,9 +76,12 @@ export function BlockBrowser() {
   const [showPicker, setShowPicker] = useState<number | null>(null)
   const [pickerSearch, setPickerSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ show: false, x: 0, y: 0, block: null })
+  const [tooltip, setTooltip] = useState<TooltipState>({ show: false, x: 0, y: 0, block: null })
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const filteredBlocks = useMemo(() => {
     if (searchQuery.trim()) return searchBlocks(searchQuery)
@@ -75,9 +92,7 @@ export function BlockBrowser() {
   }, [activeCategory, searchQuery, recent, pinned])
 
   const displayedBlocks = useMemo(() => {
-    if (searchQuery.trim() || activeCategory === 'recent' || activeCategory === 'pinned') {
-      return filteredBlocks
-    }
+    if (searchQuery.trim() || activeCategory === 'recent' || activeCategory === 'pinned') return filteredBlocks
     return filteredBlocks.slice(0, (page + 1) * PAGE_SIZE)
   }, [filteredBlocks, page, searchQuery, activeCategory])
 
@@ -92,9 +107,7 @@ export function BlockBrowser() {
     const handleScroll = () => {
       if (!gridRef.current || !hasMore) return
       const { scrollTop, scrollHeight, clientHeight } = gridRef.current
-      if (scrollTop + clientHeight >= scrollHeight - 80) {
-        setPage(p => p + 1)
-      }
+      if (scrollTop + clientHeight >= scrollHeight - 80) setPage(p => p + 1)
     }
     const grid = gridRef.current
     if (grid) grid.addEventListener('scroll', handleScroll)
@@ -104,7 +117,7 @@ export function BlockBrowser() {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) {
-        if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
+        if (e.key === 'Escape') { (e.target as HTMLInputElement).blur(); setContextMenu({ show: false, x: 0, y: 0, block: null }) }
         return
       }
       if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus(); return }
@@ -132,6 +145,7 @@ export function BlockBrowser() {
         setShowPicker(null)
         setPickerSearch('')
       }
+      setContextMenu({ show: false, x: 0, y: 0, block: null })
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -140,6 +154,25 @@ export function BlockBrowser() {
   const handleTextureError = useCallback((id: string) => {
     setFailedTextures(prev => new Set(prev).add(id))
   }, [])
+
+  const handleBlockClick = (block: BlockData) => setSelectedBlock(block)
+
+  const handleBlockRightClick = (e: React.MouseEvent, block: BlockData) => {
+    e.preventDefault()
+    setContextMenu({ show: true, x: e.clientX, y: e.clientY, block })
+  }
+
+  const handleBlockHover = (e: React.MouseEvent, block: BlockData) => {
+    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current)
+    tooltipTimerRef.current = setTimeout(() => {
+      setTooltip({ show: true, x: e.clientX, y: e.clientY, block })
+    }, 500)
+  }
+
+  const handleBlockLeave = () => {
+    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current)
+    setTooltip({ show: false, x: 0, y: 0, block: null })
+  }
 
   const handleSlotClick = (block: BlockData) => setSelectedBlock(block)
   const handleSlotRightClick = (e: React.MouseEvent, idx: number) => {
@@ -159,23 +192,25 @@ export function BlockBrowser() {
     }
   }
 
-  const handleAddToQuickbar = () => {
-    if (!selectedBlock) return
-    const existing = favorites.findIndex(f => f.id === selectedBlock.id)
+  const handleAddToQuickbar = (block?: BlockData) => {
+    const target = block || selectedBlock
+    if (!target) return
+    const existing = favorites.findIndex(f => f.id === target.id)
     if (existing >= 0) { setShowPicker(existing); return }
-    const newFavs = [...favorites.slice(1), selectedBlock]
+    const newFavs = [...favorites.slice(1), target]
     setFavorites(newFavs)
     try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
   }
 
-  const handleTogglePin = () => {
-    if (!selectedBlock) return
-    if (pinned.includes(selectedBlock.id)) {
-      const newPinned = pinned.filter(id => id !== selectedBlock.id)
+  const handleTogglePin = (block?: BlockData) => {
+    const target = block || selectedBlock
+    if (!target) return
+    if (pinned.includes(target.id)) {
+      const newPinned = pinned.filter(id => id !== target.id)
       setPinned(newPinned)
       try { localStorage.setItem(PINNED_KEY, JSON.stringify(newPinned)) } catch {}
     } else {
-      const newPinned = [selectedBlock.id, ...pinned].slice(0, 18)
+      const newPinned = [target.id, ...pinned].slice(0, 18)
       setPinned(newPinned)
       try { localStorage.setItem(PINNED_KEY, JSON.stringify(newPinned)) } catch {}
     }
@@ -186,10 +221,11 @@ export function BlockBrowser() {
     return BLOCKS.slice(0, 80)
   }, [pickerSearch])
 
-  const isPinned = selectedBlock ? pinned.includes(selectedBlock.id) : false
-  const isInQuickbar = selectedBlock ? favorites.some(f => f.id === selectedBlock.id) : false
-
+  const isPinned = (id: string) => pinned.includes(id)
+  const isInQuickbar = (id: string) => favorites.some(f => f.id === id)
   const categoryLabel = activeCategory === 'recent' ? '最近' : activeCategory === 'pinned' ? '收藏' : CATEGORIES.find(c => c.key === activeCategory)?.label || ''
+
+  const contextBlock = contextMenu.block
 
   return (
     <div className="be-browser">
@@ -199,7 +235,7 @@ export function BlockBrowser() {
           <span className="be-title-text">方块选择</span>
         </div>
         <div className="be-toolbar-right">
-          <span className="be-block-count">{BLOCKS.length} 个</span>
+          <span className="be-block-count">{BLOCKS.length}</span>
         </div>
       </div>
 
@@ -217,7 +253,9 @@ export function BlockBrowser() {
                 className={`be-slot ${isActive ? 'active' : ''}`}
                 onClick={() => handleSlotClick(block)}
                 onContextMenu={(e) => handleSlotRightClick(e, idx)}
-                title={block.nameZh}
+                onMouseEnter={(e) => handleBlockHover(e, block)}
+                onMouseLeave={handleBlockLeave}
+                title={`${block.nameZh}\n右键替换`}
               >
                 <span className="be-slot-num">{idx + 1}</span>
                 <div className="be-slot-inner">
@@ -227,6 +265,7 @@ export function BlockBrowser() {
                     <div style={{ backgroundColor: block.color }} />
                   )}
                 </div>
+                {isPinned(block.id) && <span className="be-slot-pin">📌</span>}
               </div>
             )
           })}
@@ -268,13 +307,73 @@ export function BlockBrowser() {
         </div>
       )}
 
+      {contextMenu.show && contextBlock && (
+        <div
+          className="be-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="be-context-header">
+            <div className="be-context-icon">
+              {!failedTextures.has(contextBlock.id) ? (
+                <img src={getMCTextureURL(contextBlock.id)} alt="" onError={() => handleTextureError(contextBlock.id)} />
+              ) : (
+                <div style={{ backgroundColor: contextBlock.color }} />
+              )}
+            </div>
+            <div className="be-context-info">
+              <span className="be-context-name">{contextBlock.nameZh}</span>
+              <span className="be-context-id">{contextBlock.id.replace('minecraft:', '')}</span>
+            </div>
+          </div>
+          <div className="be-context-divider" />
+          <button className="be-context-item" onClick={() => { setSelectedBlock(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            <span>选择此方块</span>
+            <span className="be-context-shortcut">点击</span>
+          </button>
+          <button className="be-context-item" onClick={() => { handleAddToQuickbar(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            <span>{isInQuickbar(contextBlock.id) ? '已加入快捷栏' : '加入快捷栏'}</span>
+            {isInQuickbar(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
+          </button>
+          <button className="be-context-item" onClick={() => { handleTogglePin(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            <span>{isPinned(contextBlock.id) ? '取消收藏' : '添加收藏'}</span>
+            {isPinned(contextBlock.id) ? <span className="be-context-check">📌</span> : <span>☆</span>}
+          </button>
+        </div>
+      )}
+
+      {tooltip.show && tooltip.block && !contextMenu.show && (
+        <div
+          className="be-tooltip"
+          style={{ left: (tooltip.x || 0) + 12, top: (tooltip.y || 0) + 12 }}
+        >
+          <div className="be-tooltip-header">
+            <div className="be-tooltip-icon">
+              {!failedTextures.has(tooltip.block?.id || '') ? (
+                <img src={getMCTextureURL(tooltip.block?.id || '')} alt="" onError={() => handleTextureError(tooltip.block?.id || '')} />
+              ) : (
+                <div style={{ backgroundColor: tooltip.block?.color || '#888' }} />
+              )}
+            </div>
+            <div>
+              <div className="be-tooltip-name">{tooltip.block?.nameZh}</div>
+              <div className="be-tooltip-id">{tooltip.block?.id.replace('minecraft:', '')}</div>
+            </div>
+          </div>
+          <div className="be-tooltip-meta">
+            <span>硬度: {tooltip.block?.hardness}</span>
+            <span>{tooltip.block?.transparent ? '透明' : '不透明'}</span>
+          </div>
+        </div>
+      )}
+
       <div className="be-search-section">
         <div className="be-search">
           <span className="be-search-icon">🔍</span>
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="搜索方块 (按 / )"
+            placeholder="搜索方块... (按 / )"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
@@ -312,8 +411,10 @@ export function BlockBrowser() {
             <div
               key={block.id}
               className={`be-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
-              onClick={() => setSelectedBlock(block)}
-              title={block.nameZh}
+              onClick={() => handleBlockClick(block)}
+              onContextMenu={(e) => handleBlockRightClick(e, block)}
+              onMouseEnter={(e) => handleBlockHover(e, block)}
+              onMouseLeave={handleBlockLeave}
             >
               <div className="be-block-inner">
                 {!failedTextures.has(block.id) ? (
@@ -322,7 +423,7 @@ export function BlockBrowser() {
                   <div style={{ backgroundColor: block.color }} />
                 )}
               </div>
-              {pinned.includes(block.id) && <span className="be-block-pin">📌</span>}
+              {isPinned(block.id) && <span className="be-block-pin">📌</span>}
             </div>
           ))}
           {filteredBlocks.length === 0 && <div className="be-empty">未找到方块</div>}
@@ -351,18 +452,18 @@ export function BlockBrowser() {
           </div>
           <div className="be-status-actions">
             <button
-              className={`be-action ${isPinned ? 'pinned' : ''}`}
-              onClick={handleTogglePin}
-              title={isPinned ? '取消收藏' : '收藏'}
+              className={`be-action ${isPinned(selectedBlock.id) ? 'pinned' : ''}`}
+              onClick={() => handleTogglePin()}
+              title={isPinned(selectedBlock.id) ? '取消收藏' : '收藏'}
             >
-              {isPinned ? '📌' : '☆'}
+              {isPinned(selectedBlock.id) ? '📌' : '☆'}
             </button>
             <button
-              className={`be-action ${isInQuickbar ? 'inbar' : ''}`}
-              onClick={handleAddToQuickbar}
-              title={isInQuickbar ? '已在快捷栏' : '加入快捷栏'}
+              className={`be-action ${isInQuickbar(selectedBlock.id) ? 'inbar' : ''}`}
+              onClick={() => handleAddToQuickbar()}
+              title={isInQuickbar(selectedBlock.id) ? '已在快捷栏' : '加入快捷栏'}
             >
-              {isInQuickbar ? '✓' : '+'}
+              {isInQuickbar(selectedBlock.id) ? '✓' : '+'}
             </button>
           </div>
         </div>
@@ -376,6 +477,7 @@ export function BlockBrowser() {
           background: #c6c6c6;
           font-family: 'Minecraft', 'Segoe UI', sans-serif;
           user-select: none;
+          position: relative;
         }
 
         .be-toolbar {
@@ -393,9 +495,7 @@ export function BlockBrowser() {
           gap: 6px;
         }
 
-        .be-title-icon {
-          font-size: 14px;
-        }
+        .be-title-icon { font-size: 14px; }
 
         .be-title-text {
           font-size: 13px;
@@ -404,11 +504,7 @@ export function BlockBrowser() {
           text-shadow: 1px 1px 0 #1a1a1a;
         }
 
-        .be-toolbar-right {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
+        .be-toolbar-right { display: flex; align-items: center; gap: 8px; }
 
         .be-block-count {
           font-size: 10px;
@@ -435,10 +531,7 @@ export function BlockBrowser() {
           letter-spacing: 0.5px;
         }
 
-        .be-hint {
-          color: #5c9bd4;
-          font-size: 9px;
-        }
+        .be-hint { color: #5c9bd4; font-size: 9px; }
 
         .be-hotbar {
           display: flex;
@@ -456,13 +549,9 @@ export function BlockBrowser() {
           cursor: pointer;
         }
 
-        .be-slot:hover {
-          filter: brightness(1.15);
-        }
+        .be-slot:hover { filter: brightness(1.15); }
 
-        .be-slot.active {
-          border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4;
-        }
+        .be-slot.active { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
 
         .be-slot-num {
           position: absolute;
@@ -476,10 +565,15 @@ export function BlockBrowser() {
           pointer-events: none;
         }
 
-        .be-slot-inner {
+        .be-slot-pin {
           position: absolute;
-          inset: 0;
+          top: 0;
+          right: 0;
+          font-size: 8px;
+          z-index: 2;
         }
+
+        .be-slot-inner { position: absolute; inset: 0; }
 
         .be-slot-inner img {
           position: absolute;
@@ -491,10 +585,7 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .be-slot-inner div {
-          position: absolute;
-          inset: 0;
-        }
+        .be-slot-inner div { position: absolute; inset: 0; }
 
         .be-search-section {
           padding: 8px 10px;
@@ -512,10 +603,7 @@ export function BlockBrowser() {
           border-color: #404040 #1a1a1a #1a1a1a #404040;
         }
 
-        .be-search-icon {
-          font-size: 12px;
-          opacity: 0.5;
-        }
+        .be-search-icon { font-size: 12px; opacity: 0.5; }
 
         .be-search input {
           flex: 1;
@@ -527,9 +615,7 @@ export function BlockBrowser() {
           font-family: inherit;
         }
 
-        .be-search input::placeholder {
-          color: #888;
-        }
+        .be-search input::placeholder { color: #888; }
 
         .be-search-clear {
           width: 16px;
@@ -543,9 +629,7 @@ export function BlockBrowser() {
           padding: 0;
         }
 
-        .be-search-clear:hover {
-          background: #e0e0e0;
-        }
+        .be-search-clear:hover { background: #e0e0e0; }
 
         .be-tabs {
           display: flex;
@@ -568,9 +652,7 @@ export function BlockBrowser() {
           font-family: inherit;
         }
 
-        .be-tab:hover {
-          background: #5a5a5a;
-        }
+        .be-tab:hover { background: #5a5a5a; }
 
         .be-tab.active {
           background: #4a698f;
@@ -603,18 +685,9 @@ export function BlockBrowser() {
           background: #8b8b8b;
         }
 
-        .be-grid::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        .be-grid::-webkit-scrollbar-track {
-          background: #5a5a5a;
-        }
-
-        .be-grid::-webkit-scrollbar-thumb {
-          background: #2d2d2d;
-          border: 1px solid #3d3d3d;
-        }
+        .be-grid::-webkit-scrollbar { width: 6px; }
+        .be-grid::-webkit-scrollbar-track { background: #5a5a5a; }
+        .be-grid::-webkit-scrollbar-thumb { background: #2d2d2d; border: 1px solid #3d3d3d; }
 
         .be-block {
           position: relative;
@@ -625,19 +698,11 @@ export function BlockBrowser() {
           cursor: pointer;
         }
 
-        .be-block:hover {
-          filter: brightness(1.2);
-          z-index: 1;
-        }
+        .be-block:hover { filter: brightness(1.2); z-index: 1; }
 
-        .be-block.selected {
-          border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4;
-        }
+        .be-block.selected { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
 
-        .be-block-inner {
-          position: absolute;
-          inset: 0;
-        }
+        .be-block-inner { position: absolute; inset: 0; }
 
         .be-block-inner img {
           position: absolute;
@@ -649,10 +714,7 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .be-block-inner div {
-          position: absolute;
-          inset: 0;
-        }
+        .be-block-inner div { position: absolute; inset: 0; }
 
         .be-block-pin {
           position: absolute;
@@ -681,9 +743,7 @@ export function BlockBrowser() {
           cursor: pointer;
         }
 
-        .be-load-more:hover {
-          background: #7a7a7a;
-        }
+        .be-load-more:hover { background: #7a7a7a; }
 
         .be-statusbar {
           display: flex;
@@ -714,10 +774,7 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .be-status-icon div {
-          position: absolute;
-          inset: 0;
-        }
+        .be-status-icon div { position: absolute; inset: 0; }
 
         .be-status-info {
           flex: 1;
@@ -743,10 +800,7 @@ export function BlockBrowser() {
           font-family: monospace;
         }
 
-        .be-status-actions {
-          display: flex;
-          gap: 4px;
-        }
+        .be-status-actions { display: flex; gap: 4px; }
 
         .be-action {
           width: 26px;
@@ -762,17 +816,11 @@ export function BlockBrowser() {
           justify-content: center;
         }
 
-        .be-action:hover {
-          background: #4a4a4a;
-        }
+        .be-action:hover { background: #4a4a4a; }
 
-        .be-action.pinned {
-          color: #ffd700;
-        }
+        .be-action.pinned { color: #ffd700; }
 
-        .be-action.inbar {
-          color: #5c9bd4;
-        }
+        .be-action.inbar { color: #5c9bd4; }
 
         .be-picker-overlay {
           position: absolute;
@@ -819,9 +867,7 @@ export function BlockBrowser() {
           padding: 0;
         }
 
-        .be-picker-close:hover {
-          background: #4a4a4a;
-        }
+        .be-picker-close:hover { background: #4a4a4a; }
 
         .be-picker-search {
           padding: 6px;
@@ -863,9 +909,7 @@ export function BlockBrowser() {
           cursor: pointer;
         }
 
-        .be-picker-item:hover {
-          filter: brightness(1.2);
-        }
+        .be-picker-item:hover { filter: brightness(1.2); }
 
         .be-picker-icon {
           position: relative;
@@ -884,10 +928,7 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .be-picker-icon div {
-          position: absolute;
-          inset: 0;
-        }
+        .be-picker-icon div { position: absolute; inset: 0; }
 
         .be-picker-item span {
           font-size: 7px;
@@ -904,6 +945,144 @@ export function BlockBrowser() {
           text-align: center;
           padding: 16px;
           color: #555;
+        }
+
+        .be-context-menu {
+          position: fixed;
+          min-width: 180px;
+          background: #2d2d2d;
+          border: 2px solid;
+          border-color: #555 #1a1a1a #1a1a1a #555;
+          z-index: 200;
+          padding: 4px 0;
+        }
+
+        .be-context-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background: #3a3a3a;
+        }
+
+        .be-context-icon {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          background: #4a4a4a;
+          border: 2px solid #555;
+        }
+
+        .be-context-icon img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          image-rendering: pixelated;
+          z-index: 1;
+        }
+
+        .be-context-icon div { position: absolute; inset: 0; }
+
+        .be-context-info { display: flex; flex-direction: column; gap: 2px; }
+
+        .be-context-name {
+          font-size: 12px;
+          font-weight: bold;
+          color: #fff;
+        }
+
+        .be-context-id {
+          font-size: 9px;
+          color: #888;
+          font-family: monospace;
+        }
+
+        .be-context-divider {
+          height: 1px;
+          background: #555;
+          margin: 4px 0;
+        }
+
+        .be-context-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          padding: 6px 12px;
+          background: transparent;
+          border: none;
+          color: #fff;
+          font-size: 11px;
+          cursor: pointer;
+          text-align: left;
+          font-family: inherit;
+        }
+
+        .be-context-item:hover { background: #4a4a4a; }
+
+        .be-context-shortcut {
+          font-size: 9px;
+          color: #888;
+        }
+
+        .be-context-check { font-size: 10px; }
+
+        .be-tooltip {
+          position: fixed;
+          min-width: 140px;
+          background: #2d2d2d;
+          border: 2px solid;
+          border-color: #555 #1a1a1a #1a1a1a #555;
+          z-index: 150;
+          padding: 8px;
+        }
+
+        .be-tooltip-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+
+        .be-tooltip-icon {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          background: #4a4a4a;
+          border: 2px solid #555;
+        }
+
+        .be-tooltip-icon img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          image-rendering: pixelated;
+          z-index: 1;
+        }
+
+        .be-tooltip-icon div { position: absolute; inset: 0; }
+
+        .be-tooltip-name {
+          font-size: 12px;
+          font-weight: bold;
+          color: #fff;
+        }
+
+        .be-tooltip-id {
+          font-size: 9px;
+          color: #888;
+          font-family: monospace;
+        }
+
+        .be-tooltip-meta {
+          display: flex;
+          gap: 8px;
+          font-size: 9px;
+          color: #aaa;
         }
       `}</style>
     </div>
