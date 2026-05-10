@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useSceneStore } from '@/stores/sceneStore'
 
 type PanelTab = 'blocks' | 'structures' | null
@@ -11,6 +12,7 @@ interface ToolbarProps {
 
 export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: ToolbarProps) {
   const { toolMode, setToolMode, clearScene, selectedBlock, saveScene, loadScene, exportSchematic } = useSceneStore()
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   return (
     <header className="toolbar">
@@ -47,18 +49,37 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
               <polyline points="7 3 7 8 15 8"/>
             </svg>
           </button>
-          <button
-            className="toolbar-btn btn-accent"
-            onClick={exportSchematic}
-            data-tooltip="导出投影"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span>导出</span>
-          </button>
+          <div className="export-dropdown">
+            <button
+              className="toolbar-btn btn-accent"
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              data-tooltip="导出投影"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>导出</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {showExportMenu && (
+              <div className="export-menu">
+                <button onClick={() => { exportSchematic(); setShowExportMenu(false) }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <div>
+                    <span className="menu-title">Schematic 投影</span>
+                    <span className="menu-desc">.schem 格式 · 支持 WorldEdit / Litematica</span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="toolbar-separator"/>
@@ -135,6 +156,8 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
           padding: 0 var(--space-4);
           background: var(--bg-elevation-1);
           border-bottom: 1px solid var(--border-subtle);
+          position: relative;
+          z-index: 100;
         }
 
         .toolbar-left {
@@ -209,6 +232,62 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
           background: var(--accent-primary-dim);
           box-shadow: var(--shadow-glow);
           color: #000000;
+        }
+
+        .export-dropdown {
+          position: relative;
+        }
+
+        .export-menu {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          min-width: 240px;
+          background: var(--bg-elevation-3);
+          border: 1px solid var(--border-medium);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--elevation-3);
+          overflow: hidden;
+          z-index: 1000;
+        }
+
+        .export-menu button {
+          display: flex;
+          align-items: center;
+          gap: var(--space-3);
+          width: 100%;
+          padding: var(--space-3) var(--space-4);
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          cursor: pointer;
+          transition: background var(--duration-fast) var(--ease-out);
+          text-align: left;
+        }
+
+        .export-menu button:hover {
+          background: var(--bg-elevation-4);
+        }
+
+        .export-menu button svg {
+          flex-shrink: 0;
+          color: var(--text-secondary);
+        }
+
+        .export-menu button div {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .export-menu .menu-title {
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        .export-menu .menu-desc {
+          font-size: 11px;
+          color: var(--text-secondary);
         }
 
         .tool-group {

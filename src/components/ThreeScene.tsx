@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import * as THREE from 'three'
 import { useSceneStore } from '@/stores/sceneStore'
+import { getMCTextureURL } from '@/services/textureService'
 
 const BLOCK_SIZE = 1
 
@@ -15,6 +16,9 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     lastMouse: { x: 0, y: 0 }
   })
 
+  const textureCache = useRef<Map<string, THREE.Texture>>(new Map())
+  const textureLoaderRef = useRef<THREE.TextureLoader | null>(null)
+  
   const initScene = useCallback(() => {
     if (!containerRef.current) return
 
@@ -39,6 +43,8 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
+
+    textureLoaderRef.current = new THREE.TextureLoader()
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
     scene.add(ambientLight)
@@ -152,14 +158,20 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
   const updateBlocks = useCallback(() => {
     const { blocks, getBlockKey } = useSceneStore.getState()
     const scene = sceneRef.current
-    if (!scene) return
+    if (!scene || !textureLoaderRef.current) return
 
     blockMeshesRef.current.forEach((mesh) => {
       scene.remove(mesh)
       mesh.geometry.dispose()
       if (Array.isArray(mesh.material)) {
-        mesh.material.forEach(m => m.dispose())
+        mesh.material.forEach(m => {
+          const stdMat = m as THREE.MeshStandardMaterial
+          if (stdMat.map) stdMat.map.dispose()
+          m.dispose()
+        })
       } else {
+        const stdMat = mesh.material as THREE.MeshStandardMaterial
+        if (stdMat.map) stdMat.map.dispose()
         mesh.material.dispose()
       }
     })
@@ -168,18 +180,50 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     blocks.forEach((placement) => {
       const { x, y, z, blockId } = placement
       
-      const blockColor = getBlockColor(blockId)
-      
       const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
       const isTransparent = blockId.includes('glass') || blockId.includes('redstone_wire') || 
                            blockId.includes('torch') || blockId.includes('redstone_torch') ||
                            blockId.includes('repeater') || blockId.includes('comparator') ||
                            blockId.includes('lever') || blockId.includes('button')
-      const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(blockColor),
-        transparent: isTransparent,
-        opacity: isTransparent ? 0.7 : 1.0
-      })
+      
+      let material: THREE.MeshStandardMaterial
+      const cachedTexture = textureCache.current.get(blockId)
+      
+      if (cachedTexture) {
+        material = new THREE.MeshStandardMaterial({
+          map: cachedTexture,
+          transparent: isTransparent,
+          opacity: isTransparent ? 0.7 : 1.0
+        })
+      } else {
+        const textureURL = getMCTextureURL(blockId)
+        const loader = textureLoaderRef.current!
+        loader.load(
+          textureURL,
+          (texture) => {
+            texture.colorSpace = THREE.SRGBColorSpace
+            textureCache.current.set(blockId, texture)
+            if (mesh.material) {
+              (mesh.material as THREE.MeshStandardMaterial).map = texture
+              mesh.material.needsUpdate = true
+            }
+          },
+          undefined,
+          () => {
+            const blockColor = getBlockColor(blockId)
+            if (mesh.material) {
+              (mesh.material as THREE.MeshStandardMaterial).color.set(blockColor)
+              mesh.material.needsUpdate = true
+            }
+          }
+        )
+        
+        material = new THREE.MeshStandardMaterial({
+          color: getBlockColor(blockId),
+          transparent: isTransparent,
+          opacity: isTransparent ? 0.7 : 1.0
+        })
+      }
 
       const mesh = new THREE.Mesh(geometry, material)
       mesh.position.set(x, y + BLOCK_SIZE / 2, z)

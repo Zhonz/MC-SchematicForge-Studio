@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useSceneStore } from '@/stores/sceneStore'
 import { BLOCKS, getBlocksByCategory } from '@/utils/blocks'
+import { getMCTextureURL } from '@/services/textureService'
 import type { BlockCategory } from '@/types'
 
 const CATEGORIES: Array<{ key: BlockCategory; label: string; icon: JSX.Element }> = [
@@ -35,6 +36,7 @@ export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
   const [activeCategory, setActiveCategory] = useState<BlockCategory>('building')
   const [searchQuery, setSearchQuery] = useState('')
+  const [failedTextures, setFailedTextures] = useState<Set<string>>(new Set())
 
   const filteredBlocks = useMemo(() => {
     const blocks = getBlocksByCategory(activeCategory)
@@ -44,6 +46,10 @@ export function BlockBrowser() {
       b.nameZh.includes(searchQuery)
     )
   }, [activeCategory, searchQuery])
+
+  const handleTextureError = (blockId: string) => {
+    setFailedTextures(prev => new Set(prev).add(blockId))
+  }
 
   return (
     <div className="block-browser">
@@ -89,10 +95,29 @@ export function BlockBrowser() {
             onClick={() => setSelectedBlock(block)}
             className={`block-item ${selectedBlock.id === block.id ? 'selected' : ''}`}
           >
-            <div 
-              className="block-color" 
-              style={{ backgroundColor: block.color }}
-            />
+            <div className="block-texture-wrapper">
+              {!failedTextures.has(block.id) ? (
+                <img 
+                  src={getMCTextureURL(block.id)}
+                  alt={block.nameZh}
+                  className="block-texture"
+                  onError={() => handleTextureError(block.id)}
+                />
+              ) : null}
+              <div 
+                className="block-color-fallback" 
+                style={{ 
+                  backgroundColor: failedTextures.has(block.id) ? 'transparent' : block.color,
+                  opacity: failedTextures.has(block.id) ? 0 : 1
+                }}
+              />
+              {failedTextures.has(block.id) && (
+                <div 
+                  className="block-color-solid" 
+                  style={{ backgroundColor: block.color }}
+                />
+              )}
+            </div>
             <div className="block-info">
               <div className="block-name">{block.nameZh}</div>
               <div className="block-id">{block.id}</div>
@@ -113,7 +138,29 @@ export function BlockBrowser() {
 
       {selectedBlock && (
         <div className="selected-block-footer">
-          <div className="selected-preview" style={{ backgroundColor: selectedBlock.color }} />
+          <div className="selected-preview-wrapper">
+            {!failedTextures.has(selectedBlock.id) ? (
+              <img 
+                src={getMCTextureURL(selectedBlock.id)}
+                alt={selectedBlock.nameZh}
+                className="selected-preview-image"
+                onError={() => handleTextureError(selectedBlock.id)}
+              />
+            ) : null}
+            <div 
+              className="selected-preview-fallback" 
+              style={{ 
+                backgroundColor: failedTextures.has(selectedBlock.id) ? 'transparent' : selectedBlock.color,
+                opacity: failedTextures.has(selectedBlock.id) ? 0 : 1
+              }}
+            />
+            {failedTextures.has(selectedBlock.id) && (
+              <div 
+                className="selected-preview-solid" 
+                style={{ backgroundColor: selectedBlock.color }}
+              />
+            )}
+          </div>
           <div className="selected-info">
             <div className="selected-name">{selectedBlock.nameZh}</div>
             <div className="selected-meta">
@@ -256,12 +303,42 @@ export function BlockBrowser() {
           border-left-color: var(--accent-primary);
         }
 
-        .block-color {
+        .block-texture-wrapper {
+          position: relative;
           width: 32px;
           height: 32px;
           border-radius: var(--radius-md);
+          overflow: hidden;
           flex-shrink: 0;
+          background: var(--bg-elevation-3);
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+        }
+
+        .block-texture {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          z-index: 1;
+        }
+
+        .block-color-fallback {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          transition: opacity var(--duration-fast) var(--ease-out);
+        }
+
+        .block-color-solid {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
         }
 
         .block-info {
@@ -307,12 +384,42 @@ export function BlockBrowser() {
           border-top: 1px solid var(--border-subtle);
         }
 
-        .selected-preview {
+        .selected-preview-wrapper {
+          position: relative;
           width: 40px;
           height: 40px;
           border-radius: var(--radius-lg);
+          overflow: hidden;
           flex-shrink: 0;
+          background: var(--bg-elevation-3);
           box-shadow: var(--elevation-1), inset 0 0 0 1px rgba(255,255,255,0.1);
+        }
+
+        .selected-preview-image {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          z-index: 1;
+        }
+
+        .selected-preview-fallback {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          transition: opacity var(--duration-fast) var(--ease-out);
+        }
+
+        .selected-preview-solid {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
         }
 
         .selected-info {
