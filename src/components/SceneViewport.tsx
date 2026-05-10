@@ -52,16 +52,20 @@ export function SceneViewport() {
   const sceneRef = useRef<THREE.Scene | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
+  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster())
   const blockMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map())
   const structureGhostsRef = useRef<Map<string, StructureGhost>>(new Map())
+  const ghostBlockRef = useRef<THREE.Mesh | null>(null)
+  const groundPlaneRef = useRef<THREE.Mesh | null>(null)
   const controlsRef = useRef({
     isRotating: false,
     isPanning: false,
     lastMouse: { x: 0, y: 0 }
   })
   const [blockCount, setBlockCount] = useState(0)
+  const [hoverInfo, setHoverInfo] = useState<{ x: number; y: number; z: number; blockId: string } | null>(null)
 
-  const { placeBlock, breakBlock, toolMode, selectedBlock, getBlockKey } = useSceneStore()
+  const { placeBlock, breakBlock, toolMode, selectedBlock, getBlockKey, blocks } = useSceneStore()
   const { activeStructures } = useStructureStore()
 
   const initScene = useCallback(() => {
@@ -71,19 +75,16 @@ export function SceneViewport() {
     const width = container.clientWidth
     const height = container.clientHeight
 
-    // Scene
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0x0a0e17)
     scene.fog = new THREE.Fog(0x0a0e17, 60, 120)
     sceneRef.current = scene
 
-    // Camera
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 500)
     camera.position.set(35, 30, 35)
     camera.lookAt(0, 5, 0)
     cameraRef.current = camera
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -93,7 +94,6 @@ export function SceneViewport() {
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
 
-    // Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.4)
     scene.add(ambientLight)
 
@@ -114,11 +114,9 @@ export function SceneViewport() {
     dirLight.shadow.bias = -0.0001
     scene.add(dirLight)
 
-    // Ground grid
     const gridHelper = new THREE.GridHelper(64, 64, 0x253449, 0x1a2332)
     scene.add(gridHelper)
 
-    // Ground plane
     const planeGeometry = new THREE.PlaneGeometry(128, 128)
     const planeMaterial = new THREE.MeshStandardMaterial({ 
       color: 0x111827,
@@ -129,13 +127,32 @@ export function SceneViewport() {
     plane.rotation.x = -Math.PI / 2
     plane.position.y = -0.01
     plane.receiveShadow = true
+    plane.userData = { isGround: true }
     scene.add(plane)
+    groundPlaneRef.current = plane
 
-    // Coordinate axis helper
     const axesHelper = new THREE.AxesHelper(5)
     scene.add(axesHelper)
 
-    // Animation loop
+    const ghostGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+    const ghostMaterial = new THREE.MeshBasicMaterial({
+      color: 0x4ade80,
+      transparent: true,
+      opacity: 0.3,
+      depthWrite: false
+    })
+    const ghostBlock = new THREE.Mesh(ghostGeometry, ghostMaterial)
+    ghostBlock.visible = false
+    ghostBlock.userData = { isGhost: true }
+    scene.add(ghostBlock)
+    ghostBlockRef.current = ghostBlock
+
+    const ghostEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(ghostGeometry),
+      new THREE.LineBasicMaterial({ color: 0x4ade80, linewidth: 2 })
+    )
+    ghostBlock.add(ghostEdges)
+
     let animationId = 0
     const animate = () => {
       animationId = requestAnimationFrame(animate)
@@ -145,7 +162,6 @@ export function SceneViewport() {
     }
     animate()
 
-    // Resize handler
     const handleResize = () => {
       if (!container || !camera || !renderer) return
       const w = container.clientWidth
@@ -156,18 +172,28 @@ export function SceneViewport() {
     }
     window.addEventListener('resize', handleResize)
 
-    // Mouse controls
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
         controlsRef.current.isRotating = true
       } else if (e.button === 1) {
         controlsRef.current.isPanning = true
+      } else if (e.button === 0) {
+        handleClick(e)
       }
       controlsRef.current.lastMouse = { x: e.clientX, y: e.clientY }
     }
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!camera) return
+      if (!camera || !container) return
+      
+      const rect = container.getBoundingClientRect()
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      )
+      
+      raycasterRef.current.setFromCamera(mouse, camera)
+      
       const { isRotating, isPanning, lastMouse } = controlsRef.current
       
       if (isRotating) {
@@ -206,6 +232,109 @@ export function SceneViewport() {
         
         controlsRef.current.lastMouse = { x: e.clientX, y: e.clientY }
       }
+      
+      updateGhostBlock(mouse)
+    }
+
+    const updateGhostBlock = (mouse: THREE.Vector2) => {
+      if (!ghostBlockRef.current || !scene || !camera) return
+      
+      raycasterRef.current.setFromCamera(mouse, camera)
+      
+      const meshes = Array.from(blockMeshesRef.current.values())
+      meshes.push(groundPlaneRef.current!)
+      const intersects = raycasterRef.current.intersectObjects(meshes)
+      
+      if (intersects.length > 0) {
+        const hit = intersects[0]
+        
+        if (hit.object.userData.isGround) {
+          const point = hit.point
+          const x = Math.floor(point.x + 0.5)
+          const z = Math.floor(point.z + 0.5)
+          
+          if (toolMode === 'place') {
+            ghostBlockRef.current.visible = true
+            ghostBlockRef.current.position.set(x, 0.5, z)
+            setHoverInfo({ x, y: 0, z, blockId: selectedBlock.id })
+          } else {
+            ghostBlockRef.current.visible = false
+            setHoverInfo(null)
+          }
+        } else if (hit.object.userData.isGhost) {
+          ghostBlockRef.current.visible = false
+          setHoverInfo(null)
+        } else {
+          const normal = hit.face?.normal
+          if (normal) {
+            const blockPos = hit.object.position
+            const placeX = Math.round(blockPos.x - 0.5 + normal.x)
+            const placeY = Math.round(blockPos.y - 0.5 + normal.y)
+            const placeZ = Math.round(blockPos.z - 0.5 + normal.z)
+            
+            if (toolMode === 'place') {
+              ghostBlockRef.current.visible = true
+              ghostBlockRef.current.position.set(placeX + 0.5, placeY + 0.5, placeZ + 0.5)
+              setHoverInfo({ x: placeX, y: placeY, z: placeZ, blockId: selectedBlock.id })
+            } else if (toolMode === 'break') {
+              ghostBlockRef.current.visible = false
+              setHoverInfo({
+                x: Math.round(blockPos.x - 0.5),
+                y: Math.round(blockPos.y - 0.5),
+                z: Math.round(blockPos.z - 0.5),
+                blockId: hit.object.userData.blockId
+              })
+            }
+          }
+        }
+      } else {
+        ghostBlockRef.current.visible = false
+        setHoverInfo(null)
+      }
+    }
+
+    const handleClick = (e: MouseEvent) => {
+      if (!container || !scene || !camera) return
+      
+      const rect = container.getBoundingClientRect()
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      )
+      
+      raycasterRef.current.setFromCamera(mouse, camera)
+      
+      const meshes = Array.from(blockMeshesRef.current.values())
+      if (groundPlaneRef.current) meshes.push(groundPlaneRef.current)
+      const intersects = raycasterRef.current.intersectObjects(meshes)
+      
+      if (intersects.length > 0) {
+        const hit = intersects[0]
+        
+        if (hit.object.userData.isGround && toolMode === 'place') {
+          const point = hit.point
+          const x = Math.floor(point.x + 0.5)
+          const z = Math.floor(point.z + 0.5)
+          placeBlock(x, 0, z)
+        } else if (!hit.object.userData.isGround && !hit.object.userData.isGhost) {
+          if (toolMode === 'break') {
+            const pos = hit.object.position
+            const x = Math.round(pos.x - 0.5)
+            const y = Math.round(pos.y - 0.5)
+            const z = Math.round(pos.z - 0.5)
+            breakBlock(x, y, z)
+          } else if (toolMode === 'place') {
+            const normal = hit.face?.normal
+            if (normal) {
+              const blockPos = hit.object.position
+              const placeX = Math.round(blockPos.x - 0.5 + normal.x)
+              const placeY = Math.round(blockPos.y - 0.5 + normal.y)
+              const placeZ = Math.round(blockPos.z - 0.5 + normal.z)
+              placeBlock(placeX, placeY, placeZ)
+            }
+          }
+        }
+      }
     }
 
     const handleMouseUp = () => {
@@ -227,7 +356,7 @@ export function SceneViewport() {
     }
 
     container.addEventListener('mousedown', handleMouseDown)
-    window.addEventListener('mousemove', handleMouseMove)
+    container.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
     container.addEventListener('wheel', handleWheel, { passive: false })
     container.addEventListener('contextmenu', handleContextMenu)
@@ -245,18 +374,27 @@ export function SceneViewport() {
       }
       renderer.dispose()
     }
-  }, [])
+  }, [placeBlock, breakBlock, toolMode, selectedBlock])
 
   useEffect(() => {
     return initScene()
   }, [initScene])
 
-  // Update structure ghosts based on activeStructures
+  useEffect(() => {
+    if (ghostBlockRef.current) {
+      const material = ghostBlockRef.current.material as THREE.MeshBasicMaterial
+      material.color.set(COLORS[selectedBlock.id] || '#4ade80')
+      const edges = ghostBlockRef.current.children[0] as THREE.LineSegments
+      if (edges && edges.material) {
+        (edges.material as THREE.LineBasicMaterial).color.set(COLORS[selectedBlock.id] || '#4ade80')
+      }
+    }
+  }, [selectedBlock])
+
   useEffect(() => {
     const scene = sceneRef.current
     if (!scene) return
 
-    // Remove old ghosts
     structureGhostsRef.current.forEach((ghost, id) => {
       if (!activeStructures.has(id)) {
         scene.remove(ghost.getGroup())
@@ -265,13 +403,11 @@ export function SceneViewport() {
       }
     })
 
-    // Add new ghosts
     STRUCTURES.forEach(structure => {
       if (activeStructures.has(structure.id) && !structureGhostsRef.current.has(structure.id)) {
         const color = getCategoryColor(structure.category)
         const ghost = new StructureGhost(structure.size, structure.center, color)
         
-        // Add spawner markers
         structure.spawners.forEach(spawner => {
           ghost.addSpawnerMarker(
             spawner.position,
@@ -281,7 +417,6 @@ export function SceneViewport() {
           )
         })
 
-        // Position at offset (bottom-left corner)
         ghost.setOffset(-30, 0, -30)
         scene.add(ghost.getGroup())
         structureGhostsRef.current.set(structure.id, ghost)
@@ -290,11 +425,11 @@ export function SceneViewport() {
   }, [activeStructures])
 
   const updateBlocks = useCallback(() => {
-    const { blocks } = useSceneStore.getState()
+    const currentBlocks = useSceneStore.getState().blocks
     const scene = sceneRef.current
     if (!scene) return
 
-    setBlockCount(blocks.size)
+    setBlockCount(currentBlocks.size)
 
     blockMeshesRef.current.forEach((mesh) => {
       scene.remove(mesh)
@@ -307,7 +442,7 @@ export function SceneViewport() {
     })
     blockMeshesRef.current.clear()
 
-    blocks.forEach((placement) => {
+    currentBlocks.forEach((placement) => {
       const { x, y, z, blockId } = placement
       const color = COLORS[blockId] || '#808080'
       const isTransparent = blockId.includes('glass') || blockId.includes('redstone_wire') || 
@@ -323,7 +458,7 @@ export function SceneViewport() {
       })
 
       const mesh = new THREE.Mesh(geometry, material)
-      mesh.position.set(x, y + BLOCK_SIZE / 2, z)
+      mesh.position.set(x + 0.5, y + 0.5, z + 0.5)
       mesh.castShadow = true
       mesh.receiveShadow = true
       mesh.userData = { blockId, key: getBlockKey(x, y, z) }
@@ -335,13 +470,13 @@ export function SceneViewport() {
 
   useEffect(() => {
     updateBlocks()
-  }, [updateBlocks])
+  }, [updateBlocks, blocks])
 
   return (
     <div className="flex-1 relative overflow-hidden" ref={containerRef}>
-      <div className="absolute top-3 left-3 z-10 pointer-events-none">
+      <div className="absolute top-3 left-3 z-10 pointer-events-none space-y-2">
         <div className="px-3 py-2 rounded-md backdrop-blur-sm border" style={{
-          background: 'rgba(17, 24, 39, 0.8)',
+          background: 'rgba(17, 24, 39, 0.85)',
           borderColor: 'var(--color-border)'
         }}>
           <div className="text-xs font-display font-bold tracking-wider" style={{
@@ -355,17 +490,41 @@ export function SceneViewport() {
             {toolMode === 'select' && '📐 选择模式'}
           </div>
         </div>
+
+        {hoverInfo && (
+          <div className="px-3 py-2 rounded-md backdrop-blur-sm border" style={{
+            background: 'rgba(17, 24, 39, 0.85)',
+            borderColor: toolMode === 'break' ? '#ef4444' : '#4ade80'
+          }}>
+            <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+              {toolMode === 'break' ? '⛏️' : '🧱'} {hoverInfo.blockId}
+            </div>
+            <div className="text-[10px] font-mono" style={{ 
+              color: toolMode === 'break' ? '#ef4444' : '#4ade80' 
+            }}>
+              ({hoverInfo.x}, {hoverInfo.y}, {hoverInfo.z})
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
         <div className="px-3 py-1.5 rounded-md backdrop-blur-sm border text-[10px]" style={{
-          background: 'rgba(17, 24, 39, 0.8)',
+          background: 'rgba(17, 24, 39, 0.85)',
           borderColor: 'var(--color-border)',
           color: 'var(--color-text-muted)'
         }}>
           方块数: <span style={{ color: 'var(--color-accent-green)' }}>{blockCount}</span>
           {' | '}
-          右键旋转视角 | 中键平移 | 滚轮缩放
+          左键放置/破坏 | 右键旋转 | 中键平移 | 滚轮缩放
+        </div>
+      </div>
+
+      <div className="absolute top-3 right-3 z-10 pointer-events-none">
+        <div className="flex flex-col gap-1 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="px-2 py-1 rounded bg-black/50">X</div>
+          <div className="px-2 py-1 rounded bg-black/50">Y</div>
+          <div className="px-2 py-1 rounded bg-black/50">Z</div>
         </div>
       </div>
     </div>
