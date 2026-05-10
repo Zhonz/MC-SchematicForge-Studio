@@ -9,17 +9,19 @@ const FAVORITES_KEY = 'sf_quickbar'
 const RECENT_KEY = 'sf_recent'
 const PINNED_KEY = 'sf_pinned'
 const PALETTE_KEY = 'sf_palette'
+const SEARCH_HISTORY_KEY = 'sf_search_history'
 const MAX_RECENT = 18
 const MAX_PALETTE = 12
+const MAX_SEARCH_HISTORY = 10
 const PAGE_SIZE = 48
 
 const CATEGORIES = [
-  { key: 'all', label: '全部' },
-  { key: 'building', label: '建筑' },
-  { key: 'natural', label: '自然' },
-  { key: 'redstone', label: '红石' },
-  { key: 'decoration', label: '装饰' },
-  { key: 'utility', label: '功能' },
+  { key: 'all', label: '全部', count: 0 },
+  { key: 'building', label: '建筑', count: 0 },
+  { key: 'natural', label: '自然', count: 0 },
+  { key: 'redstone', label: '红石', count: 0 },
+  { key: 'decoration', label: '装饰', count: 0 },
+  { key: 'utility', label: '功能', count: 0 },
 ] as const
 
 function loadFavorites(): BlockData[] {
@@ -61,6 +63,23 @@ function loadPalette(): string[] {
   return BLOCKS.slice(0, MAX_PALETTE).map(b => b.id)
 }
 
+function loadSearchHistory(): string[] {
+  try {
+    const saved = localStorage.getItem(SEARCH_HISTORY_KEY)
+    if (saved) return JSON.parse(saved) as string[]
+  } catch {}
+  return []
+}
+
+const CATEGORY_COUNTS = {
+  all: BLOCKS.length,
+  building: BLOCKS.filter(b => b.category === 'building').length,
+  natural: BLOCKS.filter(b => b.category === 'natural').length,
+  redstone: BLOCKS.filter(b => b.category === 'redstone').length,
+  decoration: BLOCKS.filter(b => b.category === 'decoration').length,
+  utility: BLOCKS.filter(b => b.category === 'utility').length,
+}
+
 interface ContextMenuState {
   show: boolean
   x: number
@@ -77,6 +96,8 @@ export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
   const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent' | 'pinned' | 'palette'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchHistory, setSearchHistory] = useState<string[]>(loadSearchHistory)
+  const [showHistory, setShowHistory] = useState(false)
   const [favorites, setFavorites] = useState<BlockData[]>(loadFavorites)
   const [recent, setRecent] = useState<BlockData[]>(loadRecent)
   const [pinned, setPinned] = useState<string[]>(loadPinned)
@@ -88,10 +109,12 @@ export function BlockBrowser() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ show: false, x: 0, y: 0, block: null })
   const [showHelp, setShowHelp] = useState(false)
   const [drag, setDrag] = useState<DragState>({ fromIndex: null, toIndex: null })
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const quickbarRef = useRef<HTMLDivElement>(null)
+  const historyRef = useRef<HTMLDivElement>(null)
 
   const filteredBlocks = useMemo(() => {
     if (searchQuery.trim()) return searchBlocks(searchQuery)
@@ -132,14 +155,15 @@ export function BlockBrowser() {
           (e.target as HTMLInputElement).blur()
           setContextMenu({ show: false, x: 0, y: 0, block: null })
           setShowPicker(null)
+          setShowHistory(false)
         }
         return
       }
       if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus(); return }
       if (e.key === '?') { e.preventDefault(); setShowHelp(h => !h); return }
+      if (e.key === 'b' || e.key === 'B') { e.preventDefault(); searchInputRef.current?.focus(); return }
       const num = parseInt(e.key)
       if (num >= 1 && num <= 9 && favorites[num - 1]) setSelectedBlock(favorites[num - 1])
-      if (e.key === 'b' || e.key === 'B') { e.preventDefault(); searchInputRef.current?.focus(); return }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -162,6 +186,9 @@ export function BlockBrowser() {
         setShowPicker(null)
         setPickerSearch('')
       }
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setShowHistory(false)
+      }
       setContextMenu({ show: false, x: 0, y: 0, block: null })
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -172,7 +199,14 @@ export function BlockBrowser() {
     setFailedTextures(prev => new Set(prev).add(id))
   }, [])
 
-  const handleBlockClick = (block: BlockData) => setSelectedBlock(block)
+  const handleBlockClick = (block: BlockData) => {
+    setSelectedBlock(block)
+    setShowHistory(false)
+  }
+
+  const handleBlockDoubleClick = (block: BlockData) => {
+    handleAddToPalette(block)
+  }
 
   const handleBlockRightClick = (e: React.MouseEvent, block: BlockData) => {
     e.preventDefault()
@@ -180,11 +214,30 @@ export function BlockBrowser() {
   }
 
   const handleSlotClick = (block: BlockData) => setSelectedBlock(block)
-
   const handleSlotRightClick = (e: React.MouseEvent, idx: number) => {
     e.preventDefault()
     setShowPicker(showPicker === idx ? null : idx)
     setPickerSearch('')
+  }
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    setShowHistory(value.length === 0)
+  }
+
+  const handleSearchSubmit = () => {
+    if (searchQuery.trim()) {
+      const newHistory = [searchQuery, ...searchHistory.filter(h => h !== searchQuery)].slice(0, MAX_SEARCH_HISTORY)
+      setSearchHistory(newHistory)
+      try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(newHistory)) } catch {}
+    }
+    setShowHistory(false)
+  }
+
+  const handleHistoryClick = (history: string) => {
+    setSearchQuery(history)
+    setShowHistory(false)
+    searchInputRef.current?.focus()
   }
 
   const handlePickBlock = (block: BlockData) => {
@@ -238,6 +291,12 @@ export function BlockBrowser() {
     try { localStorage.setItem(PALETTE_KEY, JSON.stringify(newPalette)) } catch {}
   }
 
+  const handleCopyId = (id: string) => {
+    navigator.clipboard.writeText(id.replace('minecraft:', ''))
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 1500)
+  }
+
   const handleQuickbarDragStart = (e: React.DragEvent, idx: number) => {
     setDrag({ fromIndex: idx, toIndex: null })
     e.dataTransfer.effectAllowed = 'move'
@@ -285,7 +344,7 @@ export function BlockBrowser() {
           <span className="be-title-text">方块选择</span>
         </div>
         <div className="be-toolbar-right">
-          <button className="be-help-btn" onClick={() => setShowHelp(h => !h)} title="快捷键 (?)">?</button>
+          <button className="be-help-btn" onClick={() => setShowHelp(h => !h)} title="快捷键">?</button>
           <span className="be-block-count">{BLOCKS.length}</span>
         </div>
       </div>
@@ -294,11 +353,13 @@ export function BlockBrowser() {
         <div className="be-help-panel">
           <div className="be-help-title">快捷键</div>
           <div className="be-help-grid">
-            <span><kbd>1-9</kbd></span><span>快捷栏</span>
-            <span><kbd>/</kbd> 或 <kbd>B</kbd></span><span>搜索</span>
+            <span><kbd>1</kbd>-<kbd>9</kbd></span><span>快捷栏</span>
+            <span><kbd>/</kbd> <kbd>B</kbd></span><span>搜索</span>
+            <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>搜索历史</span>
             <span><kbd>Esc</kbd></span><span>关闭</span>
             <span><kbd>?</kbd></span><span>帮助</span>
             <span><kbd>右键</kbd></span><span>菜单</span>
+            <span><kbd>双击</kbd></span><span>添调色板</span>
           </div>
         </div>
       )}
@@ -306,7 +367,7 @@ export function BlockBrowser() {
       <div className="be-palette-section">
         <div className="be-section-header">
           <span>调色板</span>
-          <span className="be-hint">拖拽排序</span>
+          <span className="be-hint">双击添加</span>
         </div>
         <div className="be-palette" ref={quickbarRef}>
           {palette.slice(0, MAX_PALETTE).map((id, idx) => {
@@ -336,7 +397,7 @@ export function BlockBrowser() {
             )
           })}
           {palette.length === 0 && (
-            <div className="be-palette-empty">右键添加方块到调色板</div>
+            <div className="be-palette-empty">双击方块添加</div>
           )}
         </div>
       </div>
@@ -431,38 +492,65 @@ export function BlockBrowser() {
             <span>选择此方块</span>
             <span className="be-context-shortcut">点击</span>
           </button>
-          <button className="be-context-item" onClick={() => { handleAddToQuickbar(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            <span>{isInQuickbar(contextBlock.id) ? '已在快捷栏' : '加入快捷栏'}</span>
-            {isInQuickbar(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
-          </button>
           <button className="be-context-item" onClick={() => { handleAddToPalette(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
             <span>{isInPalette(contextBlock.id) ? '已在调色板' : '加入调色板'}</span>
             {isInPalette(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
           </button>
-          {isInPalette(contextBlock.id) && (
-            <button className="be-context-item" onClick={() => { handleRemoveFromPalette(contextBlock.id); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-              <span>从调色板移除</span>
-            </button>
-          )}
-          <div className="be-context-divider" />
+          <button className="be-context-item" onClick={() => { handleAddToQuickbar(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            <span>{isInQuickbar(contextBlock.id) ? '已在快捷栏' : '加入快捷栏'}</span>
+            {isInQuickbar(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
+          </button>
           <button className="be-context-item" onClick={() => { handleTogglePin(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
             <span>{isPinned(contextBlock.id) ? '取消收藏' : '添加收藏'}</span>
             {isPinned(contextBlock.id) ? <span className="be-context-check">📌</span> : <span>☆</span>}
+          </button>
+          <div className="be-context-divider" />
+          <button className="be-context-item" onClick={() => { handleCopyId(contextBlock.id); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            <span>{copiedId === contextBlock.id ? '已复制!' : '复制ID'}</span>
+            <span className="be-context-shortcut">Ctrl+C</span>
           </button>
         </div>
       )}
 
       <div className="be-search-section">
-        <div className="be-search">
-          <span className="be-search-icon">🔍</span>
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="搜索方块... (按 / 或 B)"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && <button className="be-search-clear" onClick={() => setSearchQuery('')}>×</button>}
+        <div className="be-search-container">
+          <div className="be-search">
+            <span className="be-search-icon">🔍</span>
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="搜索方块... (按 / 或 B)"
+              value={searchQuery}
+              onChange={e => handleSearchChange(e.target.value)}
+              onFocus={() => setShowHistory(true)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleSearchSubmit()
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  const idx = searchHistory.indexOf(searchQuery)
+                  if (idx < searchHistory.length - 1) setSearchQuery(searchHistory[idx + 1])
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  const idx = searchHistory.indexOf(searchQuery)
+                  if (idx > 0) setSearchQuery(searchHistory[idx - 1])
+                  else if (idx === -1 && searchHistory.length > 0) setSearchQuery(searchHistory[0])
+                }
+              }}
+            />
+            {searchQuery && <button className="be-search-clear" onClick={() => setSearchQuery('')}>×</button>}
+          </div>
+          {showHistory && searchHistory.length > 0 && !searchQuery && (
+            <div className="be-search-history" ref={historyRef}>
+              <div className="be-history-title">搜索历史</div>
+              {searchHistory.map((h, i) => (
+                <button key={i} className="be-history-item" onClick={() => handleHistoryClick(h)}>
+                  <span className="be-history-icon">🕐</span>
+                  <span>{h}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -471,14 +559,16 @@ export function BlockBrowser() {
         <button className={`be-tab ${activeCategory === 'pinned' ? 'active' : ''}`} onClick={() => setActiveCategory('pinned')}>收藏 ({pinned.length})</button>
         <button className={`be-tab ${activeCategory === 'palette' ? 'active' : ''}`} onClick={() => setActiveCategory('palette')}>调色板 ({palette.length})</button>
         {CATEGORIES.map(cat => (
-          <button key={cat.key} className={`be-tab ${activeCategory === cat.key ? 'active' : ''}`} onClick={() => setActiveCategory(cat.key)}>{cat.label}</button>
+          <button key={cat.key} className={`be-tab ${activeCategory === cat.key ? 'active' : ''}`} onClick={() => setActiveCategory(cat.key)}>
+            {cat.label} ({CATEGORY_COUNTS[cat.key as keyof typeof CATEGORY_COUNTS]})
+          </button>
         ))}
       </div>
 
       <div className="be-content">
         <div className="be-grid-header">
           {searchQuery ? `"${searchQuery}" → ${filteredBlocks.length} 结果` : categoryLabel}
-          {activeCategory === 'all' && !searchQuery && ` (${filteredBlocks.length})`}
+          {activeCategory === 'all' && !searchQuery && ` (${CATEGORY_COUNTS.all})`}
         </div>
         <div className="be-grid" ref={gridRef}>
           {displayedBlocks.map(block => (
@@ -486,6 +576,7 @@ export function BlockBrowser() {
               key={block.id}
               className={`be-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
               onClick={() => handleBlockClick(block)}
+              onDoubleClick={() => handleBlockDoubleClick(block)}
               onContextMenu={(e) => handleBlockRightClick(e, block)}
             >
               <div className="be-block-inner">
@@ -693,6 +784,8 @@ export function BlockBrowser() {
 
         .be-search-section { padding: 8px 10px; background: #b8b8b8; border-bottom: 1px solid #9a9a9a; }
 
+        .be-search-container { position: relative; }
+
         .be-search {
           display: flex;
           align-items: center;
@@ -718,6 +811,45 @@ export function BlockBrowser() {
           padding: 0;
         }
         .be-search-clear:hover { background: #e0e0e0; }
+
+        .be-search-history {
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          background: #2d2d2d;
+          border: 2px solid;
+          border-color: #555 #1a1a1a #1a1a1a #555;
+          z-index: 50;
+          max-height: 200px;
+          overflow-y: auto;
+        }
+
+        .be-history-title {
+          padding: 6px 10px;
+          font-size: 10px;
+          color: #888;
+          background: #3a3a3a;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .be-history-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          padding: 6px 10px;
+          background: transparent;
+          border: none;
+          color: #fff;
+          font-size: 11px;
+          cursor: pointer;
+          text-align: left;
+          font-family: inherit;
+        }
+        .be-history-item:hover { background: #4a4a4a; }
+        .be-history-icon { font-size: 10px; opacity: 0.6; }
 
         .be-tabs {
           display: flex;
