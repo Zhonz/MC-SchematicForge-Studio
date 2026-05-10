@@ -1,8 +1,12 @@
 import { useSceneStore } from '@/stores/sceneStore'
 
+type SidePanel = 'blocks' | 'wiki' | null
+
 interface ToolbarProps {
-  onToggleSidebar: () => void
-  sidebarOpen: boolean
+  leftPanel: SidePanel
+  rightPanel: SidePanel
+  onToggleLeft: (panel: SidePanel) => void
+  onToggleRight: (panel: SidePanel) => void
 }
 
 const TOOLS: Array<{
@@ -16,7 +20,7 @@ const TOOLS: Array<{
   { key: 'select', label: '选择', icon: '📐', shortcut: 'S' },
 ]
 
-export function Toolbar({ onToggleSidebar, sidebarOpen }: ToolbarProps) {
+export function Toolbar({ leftPanel, rightPanel, onToggleLeft, onToggleRight }: ToolbarProps) {
   const { toolMode, setToolMode, clearScene, selectedBlock } = useSceneStore()
 
   return (
@@ -27,14 +31,17 @@ export function Toolbar({ onToggleSidebar, sidebarOpen }: ToolbarProps) {
     }}>
       <div className="flex items-center gap-3">
         <button
-          onClick={onToggleSidebar}
-          className="w-8 h-8 flex items-center justify-center rounded-md transition-all"
+          onClick={() => onToggleLeft('blocks')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+            leftPanel === 'blocks' ? 'tool-active' : ''
+          }`}
           style={{
-            background: sidebarOpen ? 'var(--color-bg-hover)' : 'transparent',
-            color: 'var(--color-text-secondary)',
+            color: leftPanel === 'blocks' ? 'var(--color-accent-green)' : 'var(--color-text-secondary)',
+            background: leftPanel === 'blocks' ? undefined : 'var(--color-bg-primary)',
           }}
         >
-          {sidebarOpen ? '◀' : '▶'}
+          <span>📦</span>
+          <span>方块</span>
         </button>
         
         <div className="flex items-center gap-1 px-1 py-0.5 rounded-md" style={{
@@ -66,6 +73,19 @@ export function Toolbar({ onToggleSidebar, sidebarOpen }: ToolbarProps) {
         <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
           {selectedBlock.nameZh}
         </span>
+        <button
+          onClick={() => onToggleRight('wiki')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ml-2 ${
+            rightPanel === 'wiki' ? 'tool-active' : ''
+          }`}
+          style={{
+            color: rightPanel === 'wiki' ? 'var(--color-accent-diamond)' : 'var(--color-text-secondary)',
+            background: rightPanel === 'wiki' ? undefined : 'var(--color-bg-primary)',
+          }}
+        >
+          <span>📖</span>
+          <span>Wiki</span>
+        </button>
       </div>
 
       <div className="flex-1" />

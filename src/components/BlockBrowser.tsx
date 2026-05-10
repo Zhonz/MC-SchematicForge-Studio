@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useSceneStore } from '@/stores/sceneStore'
 import { BLOCKS, getBlocksByCategory } from '@/utils/blocks'
-import type { BlockCategory, BlockData } from '@/types'
+import type { BlockCategory } from '@/types'
 
 const CATEGORIES: Array<{ key: BlockCategory; label: string; icon: string }> = [
   { key: 'building', label: '建筑', icon: '🏗️' },
@@ -11,7 +11,11 @@ const CATEGORIES: Array<{ key: BlockCategory; label: string; icon: string }> = [
   { key: 'utility', label: '实用', icon: '🔧' },
 ]
 
-export function BlockBrowser() {
+interface BlockBrowserProps {
+  onWikiLookup?: (query: string) => void
+}
+
+export function BlockBrowser({ onWikiLookup }: BlockBrowserProps) {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
   const [activeCategory, setActiveCategory] = useState<BlockCategory>('building')
   const [searchQuery, setSearchQuery] = useState('')
@@ -101,6 +105,19 @@ export function BlockBrowser() {
               </div>
             </div>
           </div>
+          {onWikiLookup && (
+            <button
+              onClick={() => onWikiLookup(selectedBlock.name)}
+              className="w-full mt-2 px-3 py-1.5 rounded-md text-[10px] font-medium transition-all text-center"
+              style={{
+                background: 'rgba(6, 182, 212, 0.1)',
+                color: 'var(--color-accent-diamond)',
+                border: '1px solid rgba(6, 182, 212, 0.2)',
+              }}
+            >
+              📖 在 Wiki 中查看
+            </button>
+          )}
         </div>
       )}
     </div>
