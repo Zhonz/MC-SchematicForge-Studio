@@ -9,7 +9,7 @@ const FAVORITES_KEY = 'sf_quickbar'
 const RECENT_KEY = 'sf_recent'
 const PINNED_KEY = 'sf_pinned'
 const MAX_RECENT = 12
-const PAGE_SIZE = 60
+const PAGE_SIZE = 48
 
 const CATEGORIES = [
   { key: 'all', label: '全部' },
@@ -86,15 +86,13 @@ export function BlockBrowser() {
     return filteredBlocks.length > displayedBlocks.length
   }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeCategory])
 
-  useEffect(() => {
-    setPage(0)
-  }, [activeCategory, searchQuery])
+  useEffect(() => setPage(0), [activeCategory, searchQuery])
 
   useEffect(() => {
     const handleScroll = () => {
       if (!gridRef.current || !hasMore) return
       const { scrollTop, scrollHeight, clientHeight } = gridRef.current
-      if (scrollTop + clientHeight >= scrollHeight - 50) {
+      if (scrollTop + clientHeight >= scrollHeight - 80) {
         setPage(p => p + 1)
       }
     }
@@ -106,20 +104,12 @@ export function BlockBrowser() {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) {
-        if (e.key === 'Escape') {
-          (e.target as HTMLInputElement).blur()
-        }
+        if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
         return
       }
-      if (e.key === '/') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        return
-      }
+      if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus(); return }
       const num = parseInt(e.key)
-      if (num >= 1 && num <= 9 && favorites[num - 1]) {
-        setSelectedBlock(favorites[num - 1])
-      }
+      if (num >= 1 && num <= 9 && favorites[num - 1]) setSelectedBlock(favorites[num - 1])
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -152,7 +142,6 @@ export function BlockBrowser() {
   }, [])
 
   const handleSlotClick = (block: BlockData) => setSelectedBlock(block)
-
   const handleSlotRightClick = (e: React.MouseEvent, idx: number) => {
     e.preventDefault()
     setShowPicker(showPicker === idx ? null : idx)
@@ -173,10 +162,7 @@ export function BlockBrowser() {
   const handleAddToQuickbar = () => {
     if (!selectedBlock) return
     const existing = favorites.findIndex(f => f.id === selectedBlock.id)
-    if (existing >= 0) {
-      setShowPicker(existing)
-      return
-    }
+    if (existing >= 0) { setShowPicker(existing); return }
     const newFavs = [...favorites.slice(1), selectedBlock]
     setFavorites(newFavs)
     try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
@@ -203,38 +189,42 @@ export function BlockBrowser() {
   const isPinned = selectedBlock ? pinned.includes(selectedBlock.id) : false
   const isInQuickbar = selectedBlock ? favorites.some(f => f.id === selectedBlock.id) : false
 
+  const categoryLabel = activeCategory === 'recent' ? '最近' : activeCategory === 'pinned' ? '收藏' : CATEGORIES.find(c => c.key === activeCategory)?.label || ''
+
   return (
-    <div className="mc-browser">
-      <div className="mc-titlebar">
-        <div className="mc-title">选择方块</div>
-        <div className="mc-title-count">{BLOCKS.length}</div>
+    <div className="be-browser">
+      <div className="be-toolbar">
+        <div className="be-title">
+          <span className="be-title-icon">🧱</span>
+          <span className="be-title-text">方块选择</span>
+        </div>
+        <div className="be-toolbar-right">
+          <span className="be-block-count">{BLOCKS.length} 个</span>
+        </div>
       </div>
 
-      <div className="mc-hotbar-container">
-        <div className="mc-hotbar-label">快捷栏 <span className="mc-hint">1-9</span></div>
-        <div className="mc-hotbar">
+      <div className="be-hotbar-section">
+        <div className="be-hotbar-header">
+          <span>快捷栏</span>
+          <span className="be-hint">1-9</span>
+        </div>
+        <div className="be-hotbar">
           {favorites.map((block, idx) => {
             const isActive = selectedBlock?.id === block.id
             return (
               <div
                 key={block.id}
-                className={`mc-slot ${isActive ? 'active' : ''}`}
+                className={`be-slot ${isActive ? 'active' : ''}`}
                 onClick={() => handleSlotClick(block)}
                 onContextMenu={(e) => handleSlotRightClick(e, idx)}
                 title={block.nameZh}
               >
-                <span className="mc-slot-key">{idx + 1}</span>
-                <div className="mc-slot-inner">
+                <span className="be-slot-num">{idx + 1}</span>
+                <div className="be-slot-inner">
                   {!failedTextures.has(block.id) ? (
-                    <img
-                      src={getMCTextureURL(block.id)}
-                      alt=""
-                      className="mc-slot-img"
-                      onError={() => handleTextureError(block.id)}
-                      draggable={false}
-                    />
+                    <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
                   ) : (
-                    <div className="mc-slot-bg" style={{ backgroundColor: block.color }} />
+                    <div style={{ backgroundColor: block.color }} />
                   )}
                 </div>
               </div>
@@ -244,13 +234,13 @@ export function BlockBrowser() {
       </div>
 
       {showPicker !== null && (
-        <div className="mc-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
-          <div className="mc-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
-            <div className="mc-picker-title">
-              <span>快捷栏 {showPicker + 1}</span>
-              <button className="mc-picker-x" onClick={() => { setShowPicker(null); setPickerSearch('') }}>×</button>
+        <div className="be-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
+          <div className="be-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
+            <div className="be-picker-header">
+              <span>替换 {showPicker + 1}</span>
+              <button className="be-picker-close" onClick={() => { setShowPicker(null); setPickerSearch('') }}>×</button>
             </div>
-            <div className="mc-picker-search">
+            <div className="be-picker-search">
               <input
                 type="text"
                 placeholder="搜索方块..."
@@ -259,14 +249,10 @@ export function BlockBrowser() {
                 autoFocus
               />
             </div>
-            <div className="mc-picker-items">
+            <div className="be-picker-grid">
               {pickerBlocks.map(block => (
-                <div
-                  key={block.id}
-                  className="mc-picker-item"
-                  onClick={() => handlePickBlock(block)}
-                >
-                  <div className="mc-picker-icon">
+                <div key={block.id} className="be-picker-item" onClick={() => handlePickBlock(block)}>
+                  <div className="be-picker-icon">
                     {!failedTextures.has(block.id) ? (
                       <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
                     ) : (
@@ -276,45 +262,39 @@ export function BlockBrowser() {
                   <span>{block.nameZh}</span>
                 </div>
               ))}
-              {pickerBlocks.length === 0 && (
-                <div className="mc-picker-empty">无结果</div>
-              )}
+              {pickerBlocks.length === 0 && <div className="be-picker-empty">无结果</div>}
             </div>
           </div>
         </div>
       )}
 
-      <div className="mc-search">
-        <span className="mc-search-icon">🔍</span>
-        <input
-          ref={searchInputRef}
-          type="text"
-          placeholder="搜索... (按 / )"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-        />
-        {searchQuery && (
-          <button className="mc-search-clear" onClick={() => setSearchQuery('')}>×</button>
-        )}
+      <div className="be-search-section">
+        <div className="be-search">
+          <span className="be-search-icon">🔍</span>
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="搜索方块 (按 / )"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className="be-search-clear" onClick={() => setSearchQuery('')}>×</button>
+          )}
+        </div>
       </div>
 
-      <div className="mc-tabs">
-        <button
-          className={`mc-tab ${activeCategory === 'recent' ? 'active' : ''}`}
-          onClick={() => setActiveCategory('recent')}
-        >
+      <div className="be-tabs">
+        <button className={`be-tab ${activeCategory === 'recent' ? 'active' : ''}`} onClick={() => setActiveCategory('recent')}>
           最近 ({recent.length})
         </button>
-        <button
-          className={`mc-tab ${activeCategory === 'pinned' ? 'active' : ''}`}
-          onClick={() => setActiveCategory('pinned')}
-        >
+        <button className={`be-tab ${activeCategory === 'pinned' ? 'active' : ''}`} onClick={() => setActiveCategory('pinned')}>
           收藏 ({pinned.length})
         </button>
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
-            className={`mc-tab ${activeCategory === cat.key ? 'active' : ''}`}
+            className={`be-tab ${activeCategory === cat.key ? 'active' : ''}`}
             onClick={() => setActiveCategory(cat.key)}
           >
             {cat.label}
@@ -322,75 +302,63 @@ export function BlockBrowser() {
         ))}
       </div>
 
-      <div className="mc-grid-header">
-        {searchQuery ? (
-          <span>"{searchQuery}" → {filteredBlocks.length} 个结果</span>
-        ) : activeCategory === 'recent' ? (
-          <span>最近使用</span>
-        ) : activeCategory === 'pinned' ? (
-          <span>收藏的方块</span>
-        ) : activeCategory === 'all' ? (
-          <span>全部 ({filteredBlocks.length})</span>
-        ) : (
-          <span>{CATEGORIES.find(c => c.key === activeCategory)?.label}</span>
-        )}
-      </div>
-
-      <div className="mc-grid" ref={gridRef}>
-        {displayedBlocks.map(block => (
-          <div
-            key={block.id}
-            className={`mc-item ${selectedBlock?.id === block.id ? 'selected' : ''}`}
-            onClick={() => setSelectedBlock(block)}
-            title={block.nameZh}
-          >
-            <div className="mc-item-inner">
-              {!failedTextures.has(block.id) ? (
-                <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
-              ) : (
-                <div style={{ backgroundColor: block.color }} />
-              )}
+      <div className="be-content">
+        <div className="be-grid-header">
+          {searchQuery ? `"${searchQuery}" → ${filteredBlocks.length} 结果` : categoryLabel}
+          {activeCategory === 'all' && !searchQuery && ` (${filteredBlocks.length})`}
+        </div>
+        <div className="be-grid" ref={gridRef}>
+          {displayedBlocks.map(block => (
+            <div
+              key={block.id}
+              className={`be-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
+              onClick={() => setSelectedBlock(block)}
+              title={block.nameZh}
+            >
+              <div className="be-block-inner">
+                {!failedTextures.has(block.id) ? (
+                  <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
+                ) : (
+                  <div style={{ backgroundColor: block.color }} />
+                )}
+              </div>
+              {pinned.includes(block.id) && <span className="be-block-pin">📌</span>}
             </div>
-            {pinned.includes(block.id) && <div className="mc-item-pin">📌</div>}
-          </div>
-        ))}
-        {filteredBlocks.length === 0 && (
-          <div className="mc-empty">未找到方块</div>
-        )}
-        {hasMore && (
-          <div className="mc-more" onClick={() => setPage(p => p + 1)}>
-            加载更多 (+{filteredBlocks.length - displayedBlocks.length})
-          </div>
-        )}
+          ))}
+          {filteredBlocks.length === 0 && <div className="be-empty">未找到方块</div>}
+          {hasMore && (
+            <div className="be-load-more" onClick={() => setPage(p => p + 1)}>
+              加载更多 (+{filteredBlocks.length - displayedBlocks.length})
+            </div>
+          )}
+        </div>
       </div>
 
       {selectedBlock && (
-        <div className="mc-footer">
-          <div className="mc-footer-icon">
+        <div className="be-statusbar">
+          <div className="be-status-icon">
             {!failedTextures.has(selectedBlock.id) ? (
               <img src={getMCTextureURL(selectedBlock.id)} alt="" onError={() => handleTextureError(selectedBlock.id)} />
             ) : (
               <div style={{ backgroundColor: selectedBlock.color }} />
             )}
           </div>
-          <div className="mc-footer-info">
-            <div className="mc-footer-name">{selectedBlock.nameZh}</div>
-            <div className="mc-footer-meta">
-              <span className="mc-footer-id">{selectedBlock.id.replace('minecraft:', '')}</span>
-              <span className="mc-footer-hardness">硬度 {selectedBlock.hardness}</span>
-              <span className="mc-footer-cat">{CATEGORIES.find(c => c.key === selectedBlock.category)?.label || selectedBlock.category}</span>
-            </div>
+          <div className="be-status-info">
+            <span className="be-status-name">{selectedBlock.nameZh}</span>
+            <span className="be-status-meta">
+              {selectedBlock.id.replace('minecraft:', '')} | 硬度 {selectedBlock.hardness}
+            </span>
           </div>
-          <div className="mc-footer-actions">
+          <div className="be-status-actions">
             <button
-              className={`mc-action-btn ${isPinned ? 'active' : ''}`}
+              className={`be-action ${isPinned ? 'pinned' : ''}`}
               onClick={handleTogglePin}
-              title={isPinned ? '取消收藏' : '添加收藏'}
+              title={isPinned ? '取消收藏' : '收藏'}
             >
               {isPinned ? '📌' : '☆'}
             </button>
             <button
-              className={`mc-action-btn ${isInQuickbar ? 'inbar' : ''}`}
+              className={`be-action ${isInQuickbar ? 'inbar' : ''}`}
               onClick={handleAddToQuickbar}
               title={isInQuickbar ? '已在快捷栏' : '加入快捷栏'}
             >
@@ -401,101 +369,119 @@ export function BlockBrowser() {
       )}
 
       <style>{`
-        .mc-browser {
+        .be-browser {
           display: flex;
           flex-direction: column;
           height: 100%;
           background: #c6c6c6;
-          font-family: 'Minecraft', 'Noto Sans', sans-serif;
+          font-family: 'Minecraft', 'Segoe UI', sans-serif;
           user-select: none;
         }
 
-        .mc-titlebar {
+        .be-toolbar {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 8px 12px;
-          background: linear-gradient(to bottom, #3b3b3b 0%, #1e1e1e 100%);
-          border-bottom: 2px solid #232323;
+          padding: 6px 10px;
+          background: linear-gradient(to bottom, #4a4a4a 0%, #2d2d2d 100%);
+          border-bottom: 2px solid #1a1a1a;
         }
 
-        .mc-title {
+        .be-title {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .be-title-icon {
           font-size: 14px;
+        }
+
+        .be-title-text {
+          font-size: 13px;
           font-weight: bold;
           color: #fff;
-          text-shadow: 1px 1px 0 #3f3f3f;
+          text-shadow: 1px 1px 0 #1a1a1a;
         }
 
-        .mc-title-count {
-          font-size: 11px;
-          color: #888;
-          background: #2a2a2a;
-          padding: 2px 8px;
-          border-radius: 3px;
+        .be-toolbar-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
 
-        .mc-hotbar-container {
-          padding: 10px 12px;
-          background: #1e1e1e;
-          border-bottom: 2px solid #373737;
+        .be-block-count {
+          font-size: 10px;
+          color: #999;
+          background: #1a1a1a;
+          padding: 2px 6px;
+          border-radius: 2px;
         }
 
-        .mc-hotbar-label {
+        .be-hotbar-section {
+          padding: 8px 10px;
+          background: #1a1a1a;
+          border-bottom: 2px solid #333;
+        }
+
+        .be-hotbar-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 6px;
           font-size: 10px;
           color: #666;
-          margin-bottom: 6px;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          letter-spacing: 0.5px;
         }
 
-        .mc-hint {
+        .be-hint {
           color: #5c9bd4;
-          margin-left: 6px;
           font-size: 9px;
         }
 
-        .mc-hotbar {
+        .be-hotbar {
           display: flex;
           gap: 2px;
           justify-content: center;
         }
 
-        .mc-slot {
+        .be-slot {
           position: relative;
-          width: 40px;
-          height: 40px;
+          width: 38px;
+          height: 38px;
           background: #2d2d2d;
-          border: 3px solid;
-          border-color: #373737 #1a1a1a #1a1a1a #373737;
+          border: 2px solid;
+          border-color: #404040 #1a1a1a #1a1a1a #404040;
           cursor: pointer;
         }
 
-        .mc-slot:hover {
-          filter: brightness(1.2);
+        .be-slot:hover {
+          filter: brightness(1.15);
         }
 
-        .mc-slot.active {
+        .be-slot.active {
           border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4;
         }
 
-        .mc-slot-key {
+        .be-slot-num {
           position: absolute;
           top: 1px;
-          left: 3px;
-          font-size: 10px;
+          left: 2px;
+          font-size: 9px;
           font-weight: bold;
           color: #fff;
           text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
-          z-index: 3;
+          z-index: 2;
           pointer-events: none;
         }
 
-        .mc-slot-inner {
+        .be-slot-inner {
           position: absolute;
           inset: 0;
         }
 
-        .mc-slot-img {
+        .be-slot-inner img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -505,145 +491,155 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .mc-slot-bg {
+        .be-slot-inner div {
           position: absolute;
           inset: 0;
-          z-index: 0;
         }
 
-        .mc-search {
+        .be-search-section {
+          padding: 8px 10px;
+          background: #b8b8b8;
+          border-bottom: 1px solid #9a9a9a;
+        }
+
+        .be-search {
           display: flex;
           align-items: center;
           gap: 6px;
-          margin: 10px 12px;
-          padding: 6px 10px;
-          background: #1e1e1e;
+          padding: 6px 8px;
+          background: #fff;
           border: 2px solid;
-          border-color: #373737 #1a1a1a #1a1a1a #373737;
+          border-color: #404040 #1a1a1a #1a1a1a #404040;
         }
 
-        .mc-search-icon {
+        .be-search-icon {
           font-size: 12px;
-          opacity: 0.6;
+          opacity: 0.5;
         }
 
-        .mc-search input {
+        .be-search input {
           flex: 1;
           background: transparent;
           border: none;
           outline: none;
-          color: #fff;
-          font-size: 13px;
+          color: #000;
+          font-size: 12px;
           font-family: inherit;
         }
 
-        .mc-search input::placeholder {
-          color: #666;
+        .be-search input::placeholder {
+          color: #888;
         }
 
-        .mc-search-clear {
-          width: 18px;
-          height: 18px;
-          background: #3a3a3a;
-          border: 1px solid #555;
-          color: #888;
+        .be-search-clear {
+          width: 16px;
+          height: 16px;
+          background: #d0d0d0;
+          border: 1px solid #666;
+          color: #666;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 10px;
           line-height: 1;
           padding: 0;
         }
 
-        .mc-search-clear:hover {
-          background: #4a4a4a;
-          color: #fff;
+        .be-search-clear:hover {
+          background: #e0e0e0;
         }
 
-        .mc-tabs {
+        .be-tabs {
           display: flex;
           gap: 2px;
-          padding: 0 12px 8px;
+          padding: 6px 10px;
+          background: #b8b8b8;
+          border-bottom: 1px solid #9a9a9a;
           overflow-x: auto;
         }
 
-        .mc-tab {
-          padding: 6px 10px;
-          font-size: 11px;
+        .be-tab {
+          padding: 4px 8px;
+          font-size: 10px;
           color: #fff;
-          background: #3b3b3b;
+          background: #4a4a4a;
           border: 2px solid;
-          border-color: #555 #2a2a2a #2a2a2a #555;
+          border-color: #666 #333 #333 #666;
           cursor: pointer;
           white-space: nowrap;
           font-family: inherit;
         }
 
-        .mc-tab:hover {
-          background: #4a4a4a;
+        .be-tab:hover {
+          background: #5a5a5a;
         }
 
-        .mc-tab.active {
+        .be-tab.active {
           background: #4a698f;
           border-color: #6a8ab4 #38537a #38537a #6a8ab4;
-          color: #fff;
         }
 
-        .mc-grid-header {
-          padding: 4px 12px 6px;
+        .be-content {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+        }
+
+        .be-grid-header {
+          padding: 4px 10px;
           font-size: 10px;
           color: #666;
-          background: #b8b8b8;
-          border-bottom: 1px solid #a0a0a0;
+          background: #a0a0a0;
+          border-bottom: 1px solid #888;
         }
 
-        .mc-grid {
+        .be-grid {
           flex: 1;
           overflow-y: auto;
-          padding: 8px;
+          padding: 6px;
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
           gap: 2px;
           align-content: start;
           background: #8b8b8b;
         }
 
-        .mc-grid::-webkit-scrollbar {
-          width: 8px;
+        .be-grid::-webkit-scrollbar {
+          width: 6px;
         }
 
-        .mc-grid::-webkit-scrollbar-track {
+        .be-grid::-webkit-scrollbar-track {
           background: #5a5a5a;
         }
 
-        .mc-grid::-webkit-scrollbar-thumb {
+        .be-grid::-webkit-scrollbar-thumb {
           background: #2d2d2d;
-          border: 2px solid;
-          border-color: #3d3d3d #1a1a1a #1a1a1a #3d3d3d;
+          border: 1px solid #3d3d3d;
         }
 
-        .mc-item {
+        .be-block {
           position: relative;
           aspect-ratio: 1;
           background: #2d2d2d;
-          border: 3px solid;
-          border-color: #373737 #1a1a1a #1a1a1a #373737;
+          border: 2px solid;
+          border-color: #404040 #1a1a1a #1a1a1a #404040;
           cursor: pointer;
         }
 
-        .mc-item:hover {
-          filter: brightness(1.15);
+        .be-block:hover {
+          filter: brightness(1.2);
           z-index: 1;
         }
 
-        .mc-item.selected {
+        .be-block.selected {
           border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4;
         }
 
-        .mc-item-inner {
+        .be-block-inner {
           position: absolute;
           inset: 0;
         }
 
-        .mc-item-inner img {
+        .be-block-inner img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -653,62 +649,62 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .mc-item-inner div {
+        .be-block-inner div {
           position: absolute;
           inset: 0;
         }
 
-        .mc-item-pin {
+        .be-block-pin {
           position: absolute;
-          top: 1px;
-          right: 1px;
+          top: 0;
+          right: 0;
           font-size: 8px;
           z-index: 2;
         }
 
-        .mc-empty {
+        .be-empty {
           grid-column: 1 / -1;
           text-align: center;
-          padding: 16px;
+          padding: 20px;
           color: #555;
-          font-size: 12px;
+          font-size: 11px;
         }
 
-        .mc-more {
+        .be-load-more {
           grid-column: 1 / -1;
           text-align: center;
-          padding: 8px;
+          padding: 6px;
           background: #6a6a6a;
           color: #ccc;
-          font-size: 11px;
+          font-size: 10px;
           border: 2px solid #555;
           cursor: pointer;
         }
 
-        .mc-more:hover {
+        .be-load-more:hover {
           background: #7a7a7a;
         }
 
-        .mc-footer {
+        .be-statusbar {
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          background: linear-gradient(to bottom, #3b3b3b 0%, #1e1e1e 100%);
-          border-top: 2px solid #4a4a4a;
+          gap: 8px;
+          padding: 6px 10px;
+          background: linear-gradient(to bottom, #4a4a4a 0%, #2d2d2d 100%);
+          border-top: 2px solid #555;
         }
 
-        .mc-footer-icon {
+        .be-status-icon {
           position: relative;
-          width: 40px;
-          height: 40px;
+          width: 36px;
+          height: 36px;
           background: #2d2d2d;
-          border: 3px solid;
-          border-color: #373737 #1a1a1a #1a1a1a #373737;
+          border: 2px solid;
+          border-color: #404040 #1a1a1a #1a1a1a #404040;
           flex-shrink: 0;
         }
 
-        .mc-footer-icon img {
+        .be-status-icon img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -718,59 +714,45 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .mc-footer-icon div {
+        .be-status-icon div {
           position: absolute;
           inset: 0;
         }
 
-        .mc-footer-info {
+        .be-status-info {
           flex: 1;
           min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
         }
 
-        .mc-footer-name {
-          font-size: 13px;
+        .be-status-name {
+          font-size: 12px;
           font-weight: bold;
           color: #fff;
-          text-shadow: 1px 1px 0 #3f3f3f;
+          text-shadow: 1px 1px 0 #1a1a1a;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
-        .mc-footer-meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-          margin-top: 2px;
-        }
-
-        .mc-footer-id {
-          font-size: 10px;
+        .be-status-meta {
+          font-size: 9px;
           color: #888;
           font-family: monospace;
         }
 
-        .mc-footer-hardness {
-          font-size: 10px;
-          color: #666;
-        }
-
-        .mc-footer-cat {
-          font-size: 10px;
-          color: #5c9bd4;
-        }
-
-        .mc-footer-actions {
+        .be-status-actions {
           display: flex;
           gap: 4px;
         }
 
-        .mc-action-btn {
-          width: 28px;
-          height: 28px;
-          font-size: 14px;
-          background: #3b3b3b;
+        .be-action {
+          width: 26px;
+          height: 26px;
+          font-size: 12px;
+          background: #3a3a3a;
           border: 2px solid;
           border-color: #555 #2a2a2a #2a2a2a #555;
           color: #888;
@@ -780,31 +762,31 @@ export function BlockBrowser() {
           justify-content: center;
         }
 
-        .mc-action-btn:hover {
+        .be-action:hover {
           background: #4a4a4a;
         }
 
-        .mc-action-btn.active {
+        .be-action.pinned {
           color: #ffd700;
         }
 
-        .mc-action-btn.inbar {
+        .be-action.inbar {
           color: #5c9bd4;
         }
 
-        .mc-picker-overlay {
+        .be-picker-overlay {
           position: absolute;
           inset: 0;
-          background: rgba(0, 0, 0, 0.6);
+          background: rgba(0, 0, 0, 0.7);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 100;
         }
 
-        .mc-picker {
-          width: 300px;
-          max-height: 380px;
+        .be-picker {
+          width: 280px;
+          max-height: 340px;
           background: #c6c6c6;
           border: 4px solid;
           border-color: #555 #1a1a1a #1a1a1a #555;
@@ -812,87 +794,87 @@ export function BlockBrowser() {
           flex-direction: column;
         }
 
-        .mc-picker-title {
+        .be-picker-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 8px 10px;
-          background: linear-gradient(to bottom, #3b3b3b 0%, #1e1e1e 100%);
-          border-bottom: 2px solid #232323;
-          font-size: 13px;
+          padding: 6px 8px;
+          background: linear-gradient(to bottom, #4a4a4a 0%, #2d2d2d 100%);
+          border-bottom: 2px solid #1a1a1a;
+          font-size: 12px;
           font-weight: bold;
           color: #fff;
         }
 
-        .mc-picker-x {
-          width: 20px;
-          height: 20px;
-          background: #3b3b3b;
+        .be-picker-close {
+          width: 18px;
+          height: 18px;
+          background: #3a3a3a;
           border: 2px solid;
           border-color: #555 #2a2a2a #2a2a2a #555;
           color: #fff;
           cursor: pointer;
-          font-size: 14px;
+          font-size: 12px;
           line-height: 1;
           padding: 0;
         }
 
-        .mc-picker-x:hover {
+        .be-picker-close:hover {
           background: #4a4a4a;
         }
 
-        .mc-picker-search {
-          padding: 8px;
+        .be-picker-search {
+          padding: 6px;
           background: #8b8b8b;
-          border-bottom: 2px solid #6b6b6b;
+          border-bottom: 1px solid #6b6b6b;
         }
 
-        .mc-picker-search input {
+        .be-picker-search input {
           width: 100%;
-          padding: 6px 8px;
+          padding: 5px 7px;
           background: #fff;
           border: 2px solid;
-          border-color: #373737 #1a1a1a #1a1a1a #373737;
+          border-color: #404040 #1a1a1a #1a1a1a #404040;
           color: #000;
-          font-size: 12px;
+          font-size: 11px;
           outline: none;
           font-family: inherit;
         }
 
-        .mc-picker-items {
+        .be-picker-grid {
           flex: 1;
           overflow-y: auto;
-          padding: 6px;
+          padding: 4px;
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 4px;
+          gap: 2px;
           background: #8b8b8b;
         }
 
-        .mc-picker-item {
+        .be-picker-item {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 3px;
-          padding: 4px;
+          gap: 2px;
+          padding: 3px;
           background: #2d2d2d;
           border: 2px solid;
-          border-color: #373737 #1a1a1a #1a1a1a #373737;
+          border-color: #404040 #1a1a1a #1a1a1a #404040;
           cursor: pointer;
         }
 
-        .mc-picker-item:hover {
+        .be-picker-item:hover {
           filter: brightness(1.2);
         }
 
-        .mc-picker-icon {
+        .be-picker-icon {
           position: relative;
-          width: 36px;
-          height: 36px;
+          width: 32px;
+          height: 32px;
           background: #3a3a3a;
         }
 
-        .mc-picker-icon img {
+        .be-picker-icon img {
           position: absolute;
           inset: 0;
           width: 100%;
@@ -902,13 +884,13 @@ export function BlockBrowser() {
           z-index: 1;
         }
 
-        .mc-picker-icon div {
+        .be-picker-icon div {
           position: absolute;
           inset: 0;
         }
 
-        .mc-picker-item span {
-          font-size: 8px;
+        .be-picker-item span {
+          font-size: 7px;
           color: #aaa;
           text-align: center;
           max-width: 100%;
@@ -917,10 +899,10 @@ export function BlockBrowser() {
           white-space: nowrap;
         }
 
-        .mc-picker-empty {
+        .be-picker-empty {
           grid-column: 1 / -1;
           text-align: center;
-          padding: 20px;
+          padding: 16px;
           color: #555;
         }
       `}</style>
