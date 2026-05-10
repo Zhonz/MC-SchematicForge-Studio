@@ -16,12 +16,12 @@ const MAX_SEARCH_HISTORY = 10
 const PAGE_SIZE = 48
 
 const CATEGORIES = [
-  { key: 'all', label: '全部', count: 0 },
-  { key: 'building', label: '建筑', count: 0 },
-  { key: 'natural', label: '自然', count: 0 },
-  { key: 'redstone', label: '红石', count: 0 },
-  { key: 'decoration', label: '装饰', count: 0 },
-  { key: 'utility', label: '功能', count: 0 },
+  { key: 'all', label: '全部' },
+  { key: 'building', label: '建筑' },
+  { key: 'natural', label: '自然' },
+  { key: 'redstone', label: '红石' },
+  { key: 'decoration', label: '装饰' },
+  { key: 'utility', label: '功能' },
 ] as const
 
 function loadFavorites(): BlockData[] {
@@ -87,11 +87,6 @@ interface ContextMenuState {
   block: BlockData | null
 }
 
-interface DragState {
-  fromIndex: number | null
-  toIndex: number | null
-}
-
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
   const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent' | 'pinned' | 'palette'>('all')
@@ -108,12 +103,12 @@ export function BlockBrowser() {
   const [page, setPage] = useState(0)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ show: false, x: 0, y: 0, block: null })
   const [showHelp, setShowHelp] = useState(false)
-  const [drag, setDrag] = useState<DragState>({ fromIndex: null, toIndex: null })
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [draggedSlot, setDraggedSlot] = useState<number | null>(null)
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
-  const quickbarRef = useRef<HTMLDivElement>(null)
   const historyRef = useRef<HTMLDivElement>(null)
 
   const filteredBlocks = useMemo(() => {
@@ -204,9 +199,7 @@ export function BlockBrowser() {
     setShowHistory(false)
   }
 
-  const handleBlockDoubleClick = (block: BlockData) => {
-    handleAddToPalette(block)
-  }
+  const handleBlockDoubleClick = (block: BlockData) => handleAddToPalette(block)
 
   const handleBlockRightClick = (e: React.MouseEvent, block: BlockData) => {
     e.preventDefault()
@@ -297,27 +290,26 @@ export function BlockBrowser() {
     setTimeout(() => setCopiedId(null), 1500)
   }
 
-  const handleQuickbarDragStart = (e: React.DragEvent, idx: number) => {
-    setDrag({ fromIndex: idx, toIndex: null })
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+    setDraggedSlot(idx)
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  const handleQuickbarDragOver = (e: React.DragEvent, idx: number) => {
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
     e.preventDefault()
-    if (drag.fromIndex !== null && drag.fromIndex !== idx) {
-      setDrag({ ...drag, toIndex: idx })
-    }
+    setDragOverSlot(idx)
   }
 
-  const handleQuickbarDragEnd = () => {
-    if (drag.fromIndex !== null && drag.toIndex !== null && drag.fromIndex !== drag.toIndex) {
+  const handleDragEnd = () => {
+    if (draggedSlot !== null && dragOverSlot !== null && draggedSlot !== dragOverSlot) {
       const newFavs = [...favorites]
-      const [removed] = newFavs.splice(drag.fromIndex, 1)
-      newFavs.splice(drag.toIndex, 0, removed)
+      const [removed] = newFavs.splice(draggedSlot, 1)
+      newFavs.splice(dragOverSlot, 0, removed)
       setFavorites(newFavs)
       try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
     }
-    setDrag({ fromIndex: null, toIndex: null })
+    setDraggedSlot(null)
+    setDragOverSlot(null)
   }
 
   const pickerBlocks = useMemo(() => {
@@ -337,39 +329,34 @@ export function BlockBrowser() {
   const contextBlock = contextMenu.block
 
   return (
-    <div className="be-browser">
-      <div className="be-toolbar">
-        <div className="be-title">
-          <span className="be-title-icon">🧱</span>
-          <span className="be-title-text">方块选择</span>
+    <div className="sb-root">
+      <div className="sb-header">
+        <div className="sb-title">
+          <span className="sb-title-icon">🧱</span>
+          <span className="sb-title-text">方块</span>
+          <span className="sb-title-count">{BLOCKS.length}</span>
         </div>
-        <div className="be-toolbar-right">
-          <button className="be-help-btn" onClick={() => setShowHelp(h => !h)} title="快捷键">?</button>
-          <span className="be-block-count">{BLOCKS.length}</span>
-        </div>
+        <button className="sb-help-btn" onClick={() => setShowHelp(h => !h)} title="快捷键">?</button>
       </div>
 
       {showHelp && (
-        <div className="be-help-panel">
-          <div className="be-help-title">快捷键</div>
-          <div className="be-help-grid">
-            <span><kbd>1</kbd>-<kbd>9</kbd></span><span>快捷栏</span>
-            <span><kbd>/</kbd> <kbd>B</kbd></span><span>搜索</span>
-            <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>搜索历史</span>
-            <span><kbd>Esc</kbd></span><span>关闭</span>
-            <span><kbd>?</kbd></span><span>帮助</span>
-            <span><kbd>右键</kbd></span><span>菜单</span>
-            <span><kbd>双击</kbd></span><span>添调色板</span>
-          </div>
+        <div className="sb-help">
+          <div className="sb-help-title">快捷键</div>
+          <div className="sb-help-row"><kbd>1-9</kbd><span>快捷栏</span></div>
+          <div className="sb-help-row"><kbd>/</kbd><kbd>B</kbd><span>搜索</span></div>
+          <div className="sb-help-row"><kbd>↑↓</kbd><span>历史</span></div>
+          <div className="sb-help-row"><kbd>Esc</kbd><span>关闭</span></div>
+          <div className="sb-help-row"><kbd>右键</kbd><span>菜单</span></div>
+          <div className="sb-help-row"><kbd>双击</kbd><span>调色板</span></div>
         </div>
       )}
 
-      <div className="be-palette-section">
-        <div className="be-section-header">
+      <div className="sb-palette-zone">
+        <div className="sb-zone-label">
           <span>调色板</span>
-          <span className="be-hint">双击添加</span>
+          <span className="sb-zone-hint">双击添加</span>
         </div>
-        <div className="be-palette" ref={quickbarRef}>
+        <div className="sb-palette">
           {palette.slice(0, MAX_PALETTE).map((id, idx) => {
             const block = BLOCKS.find(b => b.id === id)
             if (!block) return null
@@ -377,16 +364,16 @@ export function BlockBrowser() {
             return (
               <div
                 key={id}
-                className={`be-palette-slot ${isActive ? 'active' : ''} ${drag.toIndex === idx ? 'drag-over' : ''}`}
+                className={`sb-palette-item ${isActive ? 'active' : ''} ${dragOverSlot === idx ? 'drop-target' : ''}`}
                 draggable
-                onDragStart={(e) => handleQuickbarDragStart(e, idx)}
-                onDragOver={(e) => handleQuickbarDragOver(e, idx)}
-                onDragEnd={handleQuickbarDragEnd}
+                onDragStart={(e) => handleDragStart(e, idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDragEnd={handleDragEnd}
                 onClick={() => handleBlockClick(block)}
                 onContextMenu={(e) => handleBlockRightClick(e, block)}
                 title={block.nameZh}
               >
-                <div className="be-palette-inner">
+                <div className="sb-item-img">
                   {!failedTextures.has(id) ? (
                     <img src={getMCTextureURL(id)} alt="" onError={() => handleTextureError(id)} />
                   ) : (
@@ -397,40 +384,40 @@ export function BlockBrowser() {
             )
           })}
           {palette.length === 0 && (
-            <div className="be-palette-empty">双击方块添加</div>
+            <div className="sb-palette-empty">双击方块添加</div>
           )}
         </div>
       </div>
 
-      <div className="be-hotbar-section">
-        <div className="be-section-header">
+      <div className="sb-quickbar-zone">
+        <div className="sb-zone-label">
           <span>快捷栏</span>
-          <span className="be-hint">1-9</span>
+          <span className="sb-zone-hint">1-9</span>
         </div>
-        <div className="be-hotbar">
+        <div className="sb-quickbar">
           {favorites.map((block, idx) => {
             const isActive = selectedBlock?.id === block.id
             return (
               <div
                 key={block.id}
-                className={`be-slot ${isActive ? 'active' : ''}`}
+                className={`sb-slot ${isActive ? 'active' : ''} ${dragOverSlot === idx ? 'drop-target' : ''}`}
                 draggable
-                onDragStart={(e) => handleQuickbarDragStart(e, idx)}
-                onDragOver={(e) => handleQuickbarDragOver(e, idx)}
-                onDragEnd={handleQuickbarDragEnd}
+                onDragStart={(e) => handleDragStart(e, idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDragEnd={handleDragEnd}
                 onClick={() => handleSlotClick(block)}
                 onContextMenu={(e) => handleSlotRightClick(e, idx)}
                 title={block.nameZh}
               >
-                <span className="be-slot-num">{idx + 1}</span>
-                <div className="be-slot-inner">
+                <span className="sb-slot-num">{idx + 1}</span>
+                <div className="sb-slot-img">
                   {!failedTextures.has(block.id) ? (
                     <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
                   ) : (
                     <div style={{ backgroundColor: block.color }} />
                   )}
                 </div>
-                {isPinned(block.id) && <span className="be-slot-pin">📌</span>}
+                {isPinned(block.id) && <span className="sb-slot-pin">📌</span>}
               </div>
             )
           })}
@@ -438,25 +425,25 @@ export function BlockBrowser() {
       </div>
 
       {showPicker !== null && (
-        <div className="be-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
-          <div className="be-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
-            <div className="be-picker-header">
+        <div className="sb-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
+          <div className="sb-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
+            <div className="sb-picker-title">
               <span>替换 {showPicker + 1}</span>
-              <button className="be-picker-close" onClick={() => { setShowPicker(null); setPickerSearch('') }}>×</button>
+              <button className="sb-picker-close" onClick={() => { setShowPicker(null); setPickerSearch('') }}>×</button>
             </div>
-            <div className="be-picker-search">
+            <div className="sb-picker-search">
               <input
                 type="text"
-                placeholder="搜索方块..."
+                placeholder="搜索..."
                 value={pickerSearch}
                 onChange={e => setPickerSearch(e.target.value)}
                 autoFocus
               />
             </div>
-            <div className="be-picker-grid">
+            <div className="sb-picker-grid">
               {pickerBlocks.map(block => (
-                <div key={block.id} className="be-picker-item" onClick={() => handlePickBlock(block)}>
-                  <div className="be-picker-icon">
+                <div key={block.id} className="sb-picker-cell" onClick={() => handlePickBlock(block)}>
+                  <div className="sb-picker-img">
                     {!failedTextures.has(block.id) ? (
                       <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
                     ) : (
@@ -466,619 +453,771 @@ export function BlockBrowser() {
                   <span>{block.nameZh}</span>
                 </div>
               ))}
-              {pickerBlocks.length === 0 && <div className="be-picker-empty">无结果</div>}
+              {pickerBlocks.length === 0 && <div className="sb-picker-empty">无结果</div>}
             </div>
           </div>
         </div>
       )}
 
       {contextMenu.show && contextBlock && (
-        <div className="be-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(e) => e.stopPropagation()}>
-          <div className="be-context-header">
-            <div className="be-context-icon">
+        <div className="sb-context" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
+          <div className="sb-context-header">
+            <div className="sb-context-icon">
               {!failedTextures.has(contextBlock.id) ? (
                 <img src={getMCTextureURL(contextBlock.id)} alt="" onError={() => handleTextureError(contextBlock.id)} />
               ) : (
                 <div style={{ backgroundColor: contextBlock.color }} />
               )}
             </div>
-            <div className="be-context-info">
-              <span className="be-context-name">{contextBlock.nameZh}</span>
-              <span className="be-context-id">{contextBlock.id.replace('minecraft:', '')}</span>
+            <div>
+              <div className="sb-context-name">{contextBlock.nameZh}</div>
+              <div className="sb-context-id">{contextBlock.id.replace('minecraft:', '')}</div>
             </div>
           </div>
-          <div className="be-context-divider" />
-          <button className="be-context-item" onClick={() => { setSelectedBlock(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            <span>选择此方块</span>
-            <span className="be-context-shortcut">点击</span>
+          <div className="sb-context-sep" />
+          <button className="sb-context-item" onClick={() => { setSelectedBlock(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>选择</button>
+          <button className="sb-context-item" onClick={() => { handleAddToPalette(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            {isInPalette(contextBlock.id) ? '✓ 已在调色板' : '+ 加入调色板'}
           </button>
-          <button className="be-context-item" onClick={() => { handleAddToPalette(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            <span>{isInPalette(contextBlock.id) ? '已在调色板' : '加入调色板'}</span>
-            {isInPalette(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
+          <button className="sb-context-item" onClick={() => { handleAddToQuickbar(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            {isInQuickbar(contextBlock.id) ? '✓ 已在快捷栏' : '+ 加入快捷栏'}
           </button>
-          <button className="be-context-item" onClick={() => { handleAddToQuickbar(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            <span>{isInQuickbar(contextBlock.id) ? '已在快捷栏' : '加入快捷栏'}</span>
-            {isInQuickbar(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
+          <button className="sb-context-item" onClick={() => { handleTogglePin(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            {isPinned(contextBlock.id) ? '📌 取消收藏' : '☆ 收藏'}
           </button>
-          <button className="be-context-item" onClick={() => { handleTogglePin(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            <span>{isPinned(contextBlock.id) ? '取消收藏' : '添加收藏'}</span>
-            {isPinned(contextBlock.id) ? <span className="be-context-check">📌</span> : <span>☆</span>}
-          </button>
-          <div className="be-context-divider" />
-          <button className="be-context-item" onClick={() => { handleCopyId(contextBlock.id); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            <span>{copiedId === contextBlock.id ? '已复制!' : '复制ID'}</span>
-            <span className="be-context-shortcut">Ctrl+C</span>
+          <div className="sb-context-sep" />
+          <button className="sb-context-item" onClick={() => { handleCopyId(contextBlock.id); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            {copiedId === contextBlock.id ? '✓ 已复制' : '📋 复制ID'}
           </button>
         </div>
       )}
 
-      <div className="be-search-section">
-        <div className="be-search-container">
-          <div className="be-search">
-            <span className="be-search-icon">🔍</span>
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="搜索方块... (按 / 或 B)"
-              value={searchQuery}
-              onChange={e => handleSearchChange(e.target.value)}
-              onFocus={() => setShowHistory(true)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') handleSearchSubmit()
-                if (e.key === 'ArrowDown') {
-                  e.preventDefault()
-                  const idx = searchHistory.indexOf(searchQuery)
-                  if (idx < searchHistory.length - 1) setSearchQuery(searchHistory[idx + 1])
-                }
-                if (e.key === 'ArrowUp') {
-                  e.preventDefault()
-                  const idx = searchHistory.indexOf(searchQuery)
-                  if (idx > 0) setSearchQuery(searchHistory[idx - 1])
-                  else if (idx === -1 && searchHistory.length > 0) setSearchQuery(searchHistory[0])
-                }
-              }}
-            />
-            {searchQuery && <button className="be-search-clear" onClick={() => setSearchQuery('')}>×</button>}
-          </div>
-          {showHistory && searchHistory.length > 0 && !searchQuery && (
-            <div className="be-search-history" ref={historyRef}>
-              <div className="be-history-title">搜索历史</div>
-              {searchHistory.map((h, i) => (
-                <button key={i} className="be-history-item" onClick={() => handleHistoryClick(h)}>
-                  <span className="be-history-icon">🕐</span>
-                  <span>{h}</span>
-                </button>
-              ))}
-            </div>
-          )}
+      <div className="sb-search-zone">
+        <div className="sb-search-box">
+          <span className="sb-search-icon">🔍</span>
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="搜索方块..."
+            value={searchQuery}
+            onChange={e => handleSearchChange(e.target.value)}
+            onFocus={() => setShowHistory(true)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleSearchSubmit()
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                const idx = searchHistory.indexOf(searchQuery)
+                if (idx < searchHistory.length - 1) setSearchQuery(searchHistory[idx + 1])
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                const idx = searchHistory.indexOf(searchQuery)
+                if (idx > 0) setSearchQuery(searchHistory[idx - 1])
+                else if (idx === -1 && searchHistory.length > 0) setSearchQuery(searchHistory[0])
+              }
+            }}
+          />
+          {searchQuery && <button className="sb-search-clear" onClick={() => setSearchQuery('')}>×</button>}
         </div>
+        {showHistory && searchHistory.length > 0 && !searchQuery && (
+          <div className="sb-history" ref={historyRef}>
+            <div className="sb-history-title">历史</div>
+            {searchHistory.map((h, i) => (
+              <button key={i} className="sb-history-item" onClick={() => handleHistoryClick(h)}>
+                <span>🕐</span><span>{h}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="be-tabs">
-        <button className={`be-tab ${activeCategory === 'recent' ? 'active' : ''}`} onClick={() => setActiveCategory('recent')}>最近 ({recent.length})</button>
-        <button className={`be-tab ${activeCategory === 'pinned' ? 'active' : ''}`} onClick={() => setActiveCategory('pinned')}>收藏 ({pinned.length})</button>
-        <button className={`be-tab ${activeCategory === 'palette' ? 'active' : ''}`} onClick={() => setActiveCategory('palette')}>调色板 ({palette.length})</button>
+      <div className="sb-tabs">
+        <button className={`sb-tab ${activeCategory === 'recent' ? 'active' : ''}`} onClick={() => setActiveCategory('recent')}>
+          最近 ({recent.length})
+        </button>
+        <button className={`sb-tab ${activeCategory === 'pinned' ? 'active' : ''}`} onClick={() => setActiveCategory('pinned')}>
+          收藏 ({pinned.length})
+        </button>
+        <button className={`sb-tab ${activeCategory === 'palette' ? 'active' : ''}`} onClick={() => setActiveCategory('palette')}>
+          调色板 ({palette.length})
+        </button>
         {CATEGORIES.map(cat => (
-          <button key={cat.key} className={`be-tab ${activeCategory === cat.key ? 'active' : ''}`} onClick={() => setActiveCategory(cat.key)}>
+          <button
+            key={cat.key}
+            className={`sb-tab ${activeCategory === cat.key ? 'active' : ''}`}
+            onClick={() => setActiveCategory(cat.key)}
+          >
             {cat.label} ({CATEGORY_COUNTS[cat.key as keyof typeof CATEGORY_COUNTS]})
           </button>
         ))}
       </div>
 
-      <div className="be-content">
-        <div className="be-grid-header">
-          {searchQuery ? `"${searchQuery}" → ${filteredBlocks.length} 结果` : categoryLabel}
-          {activeCategory === 'all' && !searchQuery && ` (${CATEGORY_COUNTS.all})`}
-        </div>
-        <div className="be-grid" ref={gridRef}>
-          {displayedBlocks.map(block => (
-            <div
-              key={block.id}
-              className={`be-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
-              onClick={() => handleBlockClick(block)}
-              onDoubleClick={() => handleBlockDoubleClick(block)}
-              onContextMenu={(e) => handleBlockRightClick(e, block)}
-            >
-              <div className="be-block-inner">
-                {!failedTextures.has(block.id) ? (
-                  <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
-                ) : (
-                  <div style={{ backgroundColor: block.color }} />
-                )}
-              </div>
-              {isPinned(block.id) && <span className="be-block-pin">📌</span>}
+      <div className="sb-grid-header">{searchQuery ? `"${searchQuery}" ${filteredBlocks.length}` : categoryLabel}</div>
+
+      <div className="sb-grid" ref={gridRef}>
+        {displayedBlocks.map(block => (
+          <div
+            key={block.id}
+            className={`sb-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
+            onClick={() => handleBlockClick(block)}
+            onDoubleClick={() => handleBlockDoubleClick(block)}
+            onContextMenu={(e) => handleBlockRightClick(e, block)}
+          >
+            <div className="sb-block-img">
+              {!failedTextures.has(block.id) ? (
+                <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
+              ) : (
+                <div style={{ backgroundColor: block.color }} />
+              )}
             </div>
-          ))}
-          {filteredBlocks.length === 0 && <div className="be-empty">未找到方块</div>}
-          {hasMore && (
-            <div className="be-load-more" onClick={() => setPage(p => p + 1)}>
-              加载更多 (+{filteredBlocks.length - displayedBlocks.length})
-            </div>
-          )}
-        </div>
+            {isPinned(block.id) && <span className="sb-block-pin">📌</span>}
+          </div>
+        ))}
+        {filteredBlocks.length === 0 && <div className="sb-empty">无结果</div>}
+        {hasMore && (
+          <div className="sb-more" onClick={() => setPage(p => p + 1)}>+{filteredBlocks.length - displayedBlocks.length}</div>
+        )}
       </div>
 
       {selectedBlock && (
-        <div className="be-statusbar">
-          <div className="be-status-icon">
+        <div className="sb-footer">
+          <div className="sb-footer-icon">
             {!failedTextures.has(selectedBlock.id) ? (
               <img src={getMCTextureURL(selectedBlock.id)} alt="" onError={() => handleTextureError(selectedBlock.id)} />
             ) : (
               <div style={{ backgroundColor: selectedBlock.color }} />
             )}
           </div>
-          <div className="be-status-info">
-            <span className="be-status-name">{selectedBlock.nameZh}</span>
-            <span className="be-status-meta">{selectedBlock.id.replace('minecraft:', '')} | 硬度 {selectedBlock.hardness}</span>
+          <div className="sb-footer-info">
+            <div className="sb-footer-name">{selectedBlock.nameZh}</div>
+            <div className="sb-footer-meta">{selectedBlock.id.replace('minecraft:', '')} · 硬度 {selectedBlock.hardness}</div>
           </div>
-          <div className="be-status-actions">
-            <button className={`be-action ${isPinned(selectedBlock.id) ? 'pinned' : ''}`} onClick={() => handleTogglePin()} title={isPinned(selectedBlock.id) ? '取消收藏' : '收藏'}>
+          <div className="sb-footer-btns">
+            <button className={`sb-footer-btn ${isPinned(selectedBlock.id) ? 'active' : ''}`} onClick={() => handleTogglePin()}>
               {isPinned(selectedBlock.id) ? '📌' : '☆'}
             </button>
-            <button className={`be-action ${isInPalette(selectedBlock.id) ? 'inbar' : ''}`} onClick={() => handleAddToPalette()} title={isInPalette(selectedBlock.id) ? '已在调色板' : '加入调色板'}>
-              🎨
+            <button className={`sb-footer-btn ${isInPalette(selectedBlock.id) ? 'in' : ''}`} onClick={() => handleAddToPalette()}>
+              <span>{isInPalette(selectedBlock.id) ? '✓' : '🎨'}</span>
             </button>
-            <button className={`be-action ${isInQuickbar(selectedBlock.id) ? 'inbar' : ''}`} onClick={() => handleAddToQuickbar()} title={isInQuickbar(selectedBlock.id) ? '已在快捷栏' : '加入快捷栏'}>
-              {isInQuickbar(selectedBlock.id) ? '✓' : '+'}
+            <button className={`sb-footer-btn ${isInQuickbar(selectedBlock.id) ? 'in' : ''}`} onClick={() => handleAddToQuickbar()}>
+              <span>{isInQuickbar(selectedBlock.id) ? '✓' : '+'}</span>
             </button>
           </div>
         </div>
       )}
 
       <style>{`
-        .be-browser {
+        .sb-root {
+          --bg-deep: #0d0d0d;
+          --bg-base: #1a1a1a;
+          --bg-surface: #242424;
+          --bg-elevated: #2e2e2e;
+          --bg-hover: #383838;
+          --border: #3a3a3a;
+          --border-light: #4a4a4a;
+          --text-primary: #e8e8e8;
+          --text-secondary: #a0a0a0;
+          --text-hint: #666;
+          --accent: #5c9bd4;
+          --accent-dim: #3a5f89;
+          --gold: #d4a84b;
+          
           display: flex;
           flex-direction: column;
           height: 100%;
-          background: #c6c6c6;
-          font-family: 'Minecraft', 'Segoe UI', sans-serif;
+          background: var(--bg-deep);
+          color: var(--text-primary);
+          font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
           user-select: none;
           position: relative;
         }
 
-        .be-toolbar {
+        .sb-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 6px 10px;
-          background: linear-gradient(to bottom, #4a4a4a 0%, #2d2d2d 100%);
-          border-bottom: 2px solid #1a1a1a;
+          padding: 10px 14px;
+          background: var(--bg-base);
+          border-bottom: 1px solid var(--border);
         }
 
-        .be-title { display: flex; align-items: center; gap: 6px; }
-        .be-title-icon { font-size: 14px; }
-        .be-title-text { font-size: 13px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #1a1a1a; }
-        .be-toolbar-right { display: flex; align-items: center; gap: 8px; }
-        .be-block-count { font-size: 10px; color: #999; background: #1a1a1a; padding: 2px 6px; border-radius: 2px; }
+        .sb-title { display: flex; align-items: center; gap: 8px; }
+        .sb-title-icon { font-size: 16px; }
+        .sb-title-text { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+        .sb-title-count {
+          font-size: 10px;
+          padding: 2px 6px;
+          background: var(--bg-surface);
+          border-radius: 10px;
+          color: var(--text-hint);
+        }
 
-        .be-help-btn {
-          width: 20px;
-          height: 20px;
-          background: #3a3a3a;
-          border: 1px solid #555;
-          color: #888;
+        .sb-help-btn {
+          width: 22px;
+          height: 22px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-hint);
           cursor: pointer;
           font-size: 11px;
-          font-weight: bold;
+          font-weight: 600;
+          transition: all 0.15s;
         }
+        .sb-help-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
 
-        .be-help-btn:hover { background: #4a4a4a; color: #fff; }
-
-        .be-help-panel {
-          padding: 8px 12px;
-          background: #2a2a2a;
-          border-bottom: 2px solid #1a1a1a;
-        }
-
-        .be-help-title {
-          font-size: 11px;
-          color: #888;
-          margin-bottom: 6px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .be-help-grid {
+        .sb-help {
+          padding: 10px 14px;
+          background: var(--bg-base);
+          border-bottom: 1px solid var(--border);
           display: grid;
           grid-template-columns: auto 1fr;
-          gap: 4px 12px;
+          gap: 4px 10px;
           font-size: 11px;
-          color: #aaa;
         }
-
-        .be-help-grid kbd {
-          background: #3a3a3a;
-          border: 1px solid #555;
+        .sb-help-title {
+          grid-column: 1 / -1;
+          font-size: 10px;
+          color: var(--text-hint);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 4px;
+        }
+        .sb-help-row { display: contents; }
+        .sb-help-row kbd {
+          background: var(--bg-surface);
+          border: 1px solid var(--border-light);
           padding: 1px 5px;
           border-radius: 3px;
-          font-family: inherit;
           font-size: 10px;
+          font-family: inherit;
+          color: var(--text-secondary);
+        }
+        .sb-help-row span { color: var(--text-hint); }
+
+        .sb-palette-zone, .sb-quickbar-zone {
+          padding: 8px 14px;
+          background: var(--bg-base);
+          border-bottom: 1px solid var(--border);
         }
 
-        .be-palette-section {
-          padding: 8px 10px;
-          background: #1a1a1a;
-          border-bottom: 2px solid #333;
-        }
-
-        .be-section-header {
+        .sb-zone-label {
           display: flex;
           align-items: center;
           justify-content: space-between;
           margin-bottom: 6px;
           font-size: 10px;
-          color: #666;
+          color: var(--text-hint);
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
+        .sb-zone-hint { color: var(--accent); font-size: 9px; }
 
-        .be-hint { color: #5c9bd4; font-size: 9px; }
-
-        .be-palette {
+        .sb-palette {
           display: flex;
           gap: 3px;
-          justify-content: center;
           flex-wrap: wrap;
         }
 
-        .be-palette-slot {
+        .sb-palette-item, .sb-slot {
           position: relative;
-          width: 32px;
-          height: 32px;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #404040 #1a1a1a #1a1a1a #404040;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 4px;
           cursor: pointer;
+          transition: all 0.12s;
         }
 
-        .be-palette-slot:hover { filter: brightness(1.15); }
-        .be-palette-slot.active { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
-        .be-palette-slot.drag-over { border-color: #ffd700; border-style: dashed; }
+        .sb-palette-item {
+          width: 30px;
+          height: 30px;
+        }
+        .sb-slot {
+          width: 36px;
+          height: 36px;
+        }
 
-        .be-palette-inner { position: absolute; inset: 0; }
-        .be-palette-inner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
-        .be-palette-inner div { position: absolute; inset: 0; }
+        .sb-palette-item:hover, .sb-slot:hover {
+          border-color: var(--border-light);
+          transform: scale(1.08);
+        }
 
-        .be-palette-empty {
+        .sb-palette-item.active, .sb-slot.active {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 1px var(--accent-dim);
+        }
+
+        .sb-palette-item.drop-target, .sb-slot.drop-target {
+          border-color: var(--gold);
+          border-style: dashed;
+        }
+
+        .sb-item-img, .sb-slot-img {
+          position: absolute;
+          inset: 0;
+          border-radius: 3px;
+          overflow: hidden;
+        }
+
+        .sb-item-img img, .sb-slot-img img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          image-rendering: pixelated;
+          z-index: 1;
+        }
+
+        .sb-item-img div, .sb-slot-img div {
+          position: absolute;
+          inset: 0;
+        }
+
+        .sb-slot-num {
+          position: absolute;
+          top: 2px;
+          left: 3px;
+          font-size: 9px;
+          font-weight: 700;
+          color: #fff;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+          z-index: 2;
+        }
+
+        .sb-slot-pin {
+          position: absolute;
+          top: 0;
+          right: 0;
+          font-size: 8px;
+          z-index: 2;
+        }
+
+        .sb-palette-empty {
           width: 100%;
           text-align: center;
           font-size: 10px;
-          color: #555;
-          padding: 8px;
+          color: var(--text-hint);
+          padding: 6px;
         }
 
-        .be-hotbar-section { padding: 8px 10px; background: #1a1a1a; border-bottom: 2px solid #333; }
+        .sb-quickbar { display: flex; gap: 2px; justify-content: center; }
 
-        .be-hotbar { display: flex; gap: 2px; justify-content: center; }
-
-        .be-slot {
+        .sb-search-zone {
+          padding: 8px 14px;
+          background: var(--bg-deep);
+          border-bottom: 1px solid var(--border);
           position: relative;
-          width: 38px;
-          height: 38px;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #404040 #1a1a1a #1a1a1a #404040;
-          cursor: grab;
         }
 
-        .be-slot:hover { filter: brightness(1.15); }
-        .be-slot.active { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
-        .be-slot:active { cursor: grabbing; }
-
-        .be-slot-num {
-          position: absolute;
-          top: 1px;
-          left: 2px;
-          font-size: 9px;
-          font-weight: bold;
-          color: #fff;
-          text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
-          z-index: 2;
-          pointer-events: none;
-        }
-
-        .be-slot-pin { position: absolute; top: 0; right: 0; font-size: 8px; z-index: 2; }
-        .be-slot-inner { position: absolute; inset: 0; }
-        .be-slot-inner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
-        .be-slot-inner div { position: absolute; inset: 0; }
-
-        .be-search-section { padding: 8px 10px; background: #b8b8b8; border-bottom: 1px solid #9a9a9a; }
-
-        .be-search-container { position: relative; }
-
-        .be-search {
+        .sb-search-box {
           display: flex;
           align-items: center;
-          gap: 6px;
-          padding: 6px 8px;
-          background: #fff;
-          border: 2px solid;
-          border-color: #404040 #1a1a1a #1a1a1a #404040;
+          gap: 8px;
+          padding: 7px 10px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          transition: border-color 0.15s;
+        }
+        .sb-search-box:focus-within {
+          border-color: var(--accent);
         }
 
-        .be-search-icon { font-size: 12px; opacity: 0.5; }
-        .be-search input { flex: 1; background: transparent; border: none; outline: none; color: #000; font-size: 12px; font-family: inherit; }
-        .be-search input::placeholder { color: #888; }
-        .be-search-clear {
+        .sb-search-icon { font-size: 12px; opacity: 0.5; }
+        .sb-search-box input {
+          flex: 1;
+          background: transparent;
+          border: none;
+          outline: none;
+          color: var(--text-primary);
+          font-size: 12px;
+          font-family: inherit;
+        }
+        .sb-search-box input::placeholder { color: var(--text-hint); }
+
+        .sb-search-clear {
           width: 16px;
           height: 16px;
-          background: #d0d0d0;
-          border: 1px solid #666;
-          color: #666;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
+          border-radius: 3px;
+          color: var(--text-hint);
           cursor: pointer;
           font-size: 10px;
-          line-height: 1;
           padding: 0;
         }
-        .be-search-clear:hover { background: #e0e0e0; }
+        .sb-search-clear:hover { background: var(--bg-hover); }
 
-        .be-search-history {
+        .sb-history {
           position: absolute;
           top: 100%;
-          left: 0;
-          right: 0;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #555 #1a1a1a #1a1a1a #555;
+          left: 14px;
+          right: 14px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 6px;
           z-index: 50;
-          max-height: 200px;
-          overflow-y: auto;
+          overflow: hidden;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
         }
 
-        .be-history-title {
+        .sb-history-title {
           padding: 6px 10px;
           font-size: 10px;
-          color: #888;
-          background: #3a3a3a;
+          color: var(--text-hint);
+          background: var(--bg-elevated);
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
 
-        .be-history-item {
+        .sb-history-item {
           display: flex;
           align-items: center;
           gap: 8px;
           width: 100%;
-          padding: 6px 10px;
+          padding: 7px 10px;
           background: transparent;
           border: none;
-          color: #fff;
-          font-size: 11px;
+          color: var(--text-primary);
+          font-size: 12px;
           cursor: pointer;
           text-align: left;
           font-family: inherit;
+          transition: background 0.1s;
         }
-        .be-history-item:hover { background: #4a4a4a; }
-        .be-history-icon { font-size: 10px; opacity: 0.6; }
+        .sb-history-item:hover { background: var(--bg-hover); }
+        .sb-history-item span:first-child { opacity: 0.5; font-size: 10px; }
 
-        .be-tabs {
+        .sb-tabs {
           display: flex;
           gap: 2px;
-          padding: 6px 10px;
-          background: #b8b8b8;
-          border-bottom: 1px solid #9a9a9a;
+          padding: 6px 14px;
+          background: var(--bg-deep);
+          border-bottom: 1px solid var(--border);
           overflow-x: auto;
         }
 
-        .be-tab {
-          padding: 4px 8px;
-          font-size: 10px;
-          color: #fff;
-          background: #4a4a4a;
-          border: 2px solid;
-          border-color: #666 #333 #333 #666;
+        .sb-tab {
+          padding: 5px 10px;
+          font-size: 11px;
+          color: var(--text-secondary);
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 4px;
           cursor: pointer;
           white-space: nowrap;
           font-family: inherit;
+          transition: all 0.12s;
+        }
+        .sb-tab:hover { background: var(--bg-elevated); color: var(--text-primary); }
+        .sb-tab.active {
+          background: var(--accent-dim);
+          border-color: var(--accent);
+          color: #fff;
         }
 
-        .be-tab:hover { background: #5a5a5a; }
-        .be-tab.active { background: #4a698f; border-color: #6a8ab4 #38537a #38537a #6a8ab4; }
+        .sb-grid-header {
+          padding: 6px 14px;
+          font-size: 10px;
+          color: var(--text-hint);
+          background: var(--bg-base);
+          border-bottom: 1px solid var(--border);
+        }
 
-        .be-content { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-        .be-grid-header { padding: 4px 10px; font-size: 10px; color: #666; background: #a0a0a0; border-bottom: 1px solid #888; }
-
-        .be-grid {
+        .sb-grid {
           flex: 1;
           overflow-y: auto;
           padding: 6px;
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
-          gap: 2px;
+          grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+          gap: 3px;
           align-content: start;
-          background: #8b8b8b;
+          background: var(--bg-deep);
         }
 
-        .be-grid::-webkit-scrollbar { width: 6px; }
-        .be-grid::-webkit-scrollbar-track { background: #5a5a5a; }
-        .be-grid::-webkit-scrollbar-thumb { background: #2d2d2d; border: 1px solid #3d3d3d; }
+        .sb-grid::-webkit-scrollbar { width: 5px; }
+        .sb-grid::-webkit-scrollbar-track { background: var(--bg-base); }
+        .sb-grid::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 3px; }
 
-        .be-block {
+        .sb-block {
           position: relative;
           aspect-ratio: 1;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #404040 #1a1a1a #1a1a1a #404040;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 3px;
           cursor: pointer;
+          transition: all 0.1s;
+        }
+        .sb-block:hover { border-color: var(--border-light); transform: scale(1.1); z-index: 1; }
+        .sb-block.selected { border-color: var(--accent); }
+
+        .sb-block-img {
+          position: absolute;
+          inset: 0;
+          border-radius: 2px;
+          overflow: hidden;
+        }
+        .sb-block-img img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          image-rendering: pixelated;
+          z-index: 1;
+        }
+        .sb-block-img div { position: absolute; inset: 0; }
+
+        .sb-block-pin {
+          position: absolute;
+          top: 0;
+          right: 0;
+          font-size: 8px;
+          z-index: 2;
         }
 
-        .be-block:hover { filter: brightness(1.2); z-index: 1; }
-        .be-block.selected { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
-        .be-block-inner { position: absolute; inset: 0; }
-        .be-block-inner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
-        .be-block-inner div { position: absolute; inset: 0; }
-        .be-block-pin { position: absolute; top: 0; right: 0; font-size: 8px; z-index: 2; }
-        .be-empty { grid-column: 1 / -1; text-align: center; padding: 20px; color: #555; font-size: 11px; }
-        .be-load-more {
+        .sb-empty {
+          grid-column: 1 / -1;
+          text-align: center;
+          padding: 20px;
+          color: var(--text-hint);
+          font-size: 11px;
+        }
+
+        .sb-more {
           grid-column: 1 / -1;
           text-align: center;
           padding: 6px;
-          background: #6a6a6a;
-          color: #ccc;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
           font-size: 10px;
-          border: 2px solid #555;
+          border-radius: 4px;
           cursor: pointer;
         }
-        .be-load-more:hover { background: #7a7a7a; }
+        .sb-more:hover { background: var(--bg-elevated); }
 
-        .be-statusbar {
+        .sb-footer {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 6px 10px;
-          background: linear-gradient(to bottom, #4a4a4a 0%, #2d2d2d 100%);
-          border-top: 2px solid #555;
+          gap: 10px;
+          padding: 8px 14px;
+          background: var(--bg-base);
+          border-top: 1px solid var(--border);
         }
 
-        .be-status-icon { position: relative; width: 36px; height: 36px; background: #2d2d2d; border: 2px solid; border-color: #404040 #1a1a1a #1a1a1a #404040; flex-shrink: 0; }
-        .be-status-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
-        .be-status-icon div { position: absolute; inset: 0; }
+        .sb-footer-icon {
+          position: relative;
+          width: 36px;
+          height: 36px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+        .sb-footer-icon img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          image-rendering: pixelated;
+          z-index: 1;
+        }
+        .sb-footer-icon div { position: absolute; inset: 0; }
 
-        .be-status-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-        .be-status-name { font-size: 12px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .be-status-meta { font-size: 9px; color: #888; font-family: monospace; }
-
-        .be-status-actions { display: flex; gap: 4px; }
-        .be-action {
-          width: 26px;
-          height: 26px;
+        .sb-footer-info { flex: 1; min-width: 0; }
+        .sb-footer-name {
           font-size: 12px;
-          background: #3a3a3a;
-          border: 2px solid;
-          border-color: #555 #2a2a2a #2a2a2a #555;
-          color: #888;
+          font-weight: 600;
+          color: var(--text-primary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .sb-footer-meta { font-size: 9px; color: var(--text-hint); font-family: monospace; margin-top: 2px; }
+
+        .sb-footer-btns { display: flex; gap: 4px; }
+        .sb-footer-btn {
+          width: 28px;
+          height: 28px;
+          font-size: 13px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-hint);
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
+          transition: all 0.12s;
         }
-        .be-action:hover { background: #4a4a4a; }
-        .be-action.pinned { color: #ffd700; }
-        .be-action.inbar { color: #5c9bd4; }
+        .sb-footer-btn:hover { background: var(--bg-elevated); }
+        .sb-footer-btn.active { color: var(--gold); }
+        .sb-footer-btn.in { color: var(--accent); }
 
-        .be-picker-overlay {
+        .sb-picker-overlay {
           position: absolute;
           inset: 0;
-          background: rgba(0, 0, 0, 0.7);
+          background: rgba(0,0,0,0.75);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 100;
         }
 
-        .be-picker {
-          width: 280px;
-          max-height: 340px;
-          background: #c6c6c6;
-          border: 4px solid;
-          border-color: #555 #1a1a1a #1a1a1a #555;
+        .sb-picker {
+          width: 260px;
+          max-height: 320px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
           display: flex;
           flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
 
-        .be-picker-header {
+        .sb-picker-title {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 6px 8px;
-          background: linear-gradient(to bottom, #4a4a4a 0%, #2d2d2d 100%);
-          border-bottom: 2px solid #1a1a1a;
+          padding: 10px 12px;
+          background: var(--bg-elevated);
           font-size: 12px;
-          font-weight: bold;
-          color: #fff;
+          font-weight: 600;
         }
 
-        .be-picker-close {
+        .sb-picker-close {
           width: 18px;
           height: 18px;
-          background: #3a3a3a;
-          border: 2px solid;
-          border-color: #555 #2a2a2a #2a2a2a #555;
-          color: #fff;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 3px;
+          color: var(--text-secondary);
           cursor: pointer;
           font-size: 12px;
-          line-height: 1;
           padding: 0;
         }
-        .be-picker-close:hover { background: #4a4a4a; }
-        .be-picker-search { padding: 6px; background: #8b8b8b; border-bottom: 1px solid #6b6b6b; }
-        .be-picker-search input {
+        .sb-picker-close:hover { background: var(--bg-hover); }
+
+        .sb-picker-search {
+          padding: 8px;
+          border-bottom: 1px solid var(--border);
+        }
+        .sb-picker-search input {
           width: 100%;
-          padding: 5px 7px;
-          background: #fff;
-          border: 2px solid;
-          border-color: #404040 #1a1a1a #1a1a1a #404040;
-          color: #000;
+          padding: 6px 8px;
+          background: var(--bg-deep);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-primary);
           font-size: 11px;
           outline: none;
           font-family: inherit;
         }
+        .sb-picker-search input:focus { border-color: var(--accent); }
 
-        .be-picker-grid {
+        .sb-picker-grid {
           flex: 1;
           overflow-y: auto;
-          padding: 4px;
+          padding: 6px;
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 2px;
-          background: #8b8b8b;
+          gap: 4px;
         }
 
-        .be-picker-item {
+        .sb-picker-cell {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 2px;
-          padding: 3px;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #404040 #1a1a1a #1a1a1a #404040;
+          gap: 3px;
+          padding: 4px;
+          background: var(--bg-deep);
+          border: 1px solid var(--border);
+          border-radius: 4px;
           cursor: pointer;
         }
-        .be-picker-item:hover { filter: brightness(1.2); }
+        .sb-picker-cell:hover { background: var(--bg-hover); }
 
-        .be-picker-icon { position: relative; width: 32px; height: 32px; background: #3a3a3a; }
-        .be-picker-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
-        .be-picker-icon div { position: absolute; inset: 0; }
-        .be-picker-item span { font-size: 7px; color: #aaa; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .be-picker-empty { grid-column: 1 / -1; text-align: center; padding: 16px; color: #555; }
+        .sb-picker-img {
+          position: relative;
+          width: 30px;
+          height: 30px;
+          background: var(--bg-surface);
+          border-radius: 3px;
+          overflow: hidden;
+        }
+        .sb-picker-img img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          image-rendering: pixelated;
+          z-index: 1;
+        }
+        .sb-picker-img div { position: absolute; inset: 0; }
+        .sb-picker-cell span { font-size: 7px; color: var(--text-hint); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sb-picker-empty { grid-column: 1 / -1; text-align: center; padding: 20px; color: var(--text-hint); }
 
-        .be-context-menu {
+        .sb-context {
           position: fixed;
-          min-width: 180px;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #555 #1a1a1a #1a1a1a #555;
+          min-width: 170px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 6px;
           z-index: 200;
-          padding: 4px 0;
+          overflow: hidden;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.5);
         }
 
-        .be-context-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #3a3a3a; }
-        .be-context-icon { position: relative; width: 32px; height: 32px; background: #4a4a4a; border: 2px solid #555; }
-        .be-context-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
-        .be-context-icon div { position: absolute; inset: 0; }
-        .be-context-info { display: flex; flex-direction: column; gap: 2px; }
-        .be-context-name { font-size: 12px; font-weight: bold; color: #fff; }
-        .be-context-id { font-size: 9px; color: #888; font-family: monospace; }
-        .be-context-divider { height: 1px; background: #555; margin: 4px 0; }
-
-        .be-context-item {
+        .sb-context-header {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 12px;
+          background: var(--bg-elevated);
+        }
+        .sb-context-icon {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          overflow: hidden;
+        }
+        .sb-context-icon img {
+          position: absolute;
+          inset: 0;
           width: 100%;
-          padding: 6px 12px;
+          height: 100%;
+          object-fit: cover;
+          image-rendering: pixelated;
+          z-index: 1;
+        }
+        .sb-context-icon div { position: absolute; inset: 0; }
+        .sb-context-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+        .sb-context-id { font-size: 9px; color: var(--text-hint); font-family: monospace; margin-top: 2px; }
+
+        .sb-context-sep { height: 1px; background: var(--border); margin: 2px 0; }
+
+        .sb-context-item {
+          display: block;
+          width: 100%;
+          padding: 8px 12px;
           background: transparent;
           border: none;
-          color: #fff;
+          color: var(--text-primary);
           font-size: 11px;
           cursor: pointer;
           text-align: left;
           font-family: inherit;
+          transition: background 0.1s;
         }
-        .be-context-item:hover { background: #4a4a4a; }
-        .be-context-shortcut { font-size: 9px; color: #888; }
-        .be-context-check { font-size: 10px; }
+        .sb-context-item:hover { background: var(--bg-hover); }
       `}</style>
     </div>
   )
