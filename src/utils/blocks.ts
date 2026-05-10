@@ -120,7 +120,7 @@ export const BLOCKS: BlockData[] = [
   { id: 'minecraft:podzol', name: 'Podzol', nameZh: '灰化土', color: '#5B4030', hardness: 0.5, transparent: false, category: 'natural' },
   { id: 'minecraft:mycelium', name: 'Mycelium', nameZh: '菌丝土', color: '#7B5B7A', hardness: 0.5, transparent: false, category: 'natural' },
   { id: 'minecraft:mud', name: 'Mud', nameZh: '泥巴', color: '#5B4030', hardness: 0.5, transparent: false, category: 'natural' },
-  { id: 'minecraft:clay', name: 'Clay', nameZh: '粘土', color: '#9AA4A4', hardness: 0.6, transparent: false, category: 'natural' },
+
   { id: 'minecraft:sand', name: 'Sand', nameZh: '沙子', color: '#DBD3A0', hardness: 0.5, transparent: false, category: 'natural' },
   { id: 'minecraft:red_sand', name: 'Red Sand', nameZh: '红沙', color: '#D47A3A', hardness: 0.5, transparent: false, category: 'natural' },
   { id: 'minecraft:gravel', name: 'Gravel', nameZh: '沙砾', color: '#8A8A8A', hardness: 0.6, transparent: false, category: 'natural' },
@@ -174,11 +174,9 @@ export const BLOCKS: BlockData[] = [
   { id: 'minecraft:bamboo', name: 'Bamboo', nameZh: '竹子', color: '#A4B040', hardness: 0.0, transparent: true, category: 'natural' },
   { id: 'minecraft:cactus', name: 'Cactus', nameZh: '仙人掌', color: '#4A8A4A', hardness: 0.4, transparent: true, category: 'natural' },
   { id: 'minecraft:lily_pad', name: 'Lily Pad', nameZh: '睡莲', color: '#4A8A4A', hardness: 0.0, transparent: true, category: 'natural' },
-  { id: 'minecraft:spore_blossom', name: 'Spore Blossom', nameZh: '孢子花', color: '#A4D4A4', hardness: 0.0, transparent: true, category: 'natural' },
   { id: 'minecraft:cave_vines', name: 'Cave Vines', nameZh: '洞穴藤蔓', color: '#4A8A4A', hardness: 0.0, transparent: true, category: 'natural' },
   { id: 'minecraft:cave_vines_plant', name: 'Cave Vines Plant', nameZh: '洞穴藤蔓植物', color: '#4A8A4A', hardness: 0.0, transparent: true, category: 'natural' },
   { id: 'minecraft:glow_lichen', name: 'Glow Lichen', nameZh: '发光地衣', color: '#7AC47A', hardness: 0.0, transparent: true, category: 'natural' },
-  { id: 'minecraft:lily_pad', name: 'Lily Pad', nameZh: '睡莲叶', color: '#4A8A4A', hardness: 0.0, transparent: true, category: 'natural' },
 
   // ========== 红石方块 ==========
   { id: 'minecraft:redstone_block', name: 'Block of Redstone', nameZh: '红石块', color: '#B80000', hardness: 5.0, transparent: false, category: 'redstone' },
