@@ -7,7 +7,9 @@ import type { BlockCategory, BlockData } from '@/types'
 const QUICK_SLOTS = 9
 const FAVORITES_KEY = 'sf_quickbar'
 const RECENT_KEY = 'sf_recent'
-const MAX_RECENT = 18
+const PINNED_KEY = 'sf_pinned'
+const MAX_RECENT = 12
+const PAGE_SIZE = 60
 
 const CATEGORIES = [
   { key: 'all', label: '全部' },
@@ -41,23 +43,65 @@ function loadRecent(): BlockData[] {
   return []
 }
 
-function saveRecent(recent: BlockData[]) {
+function loadPinned(): string[] {
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(recent.map(b => b.id)))
+    const saved = localStorage.getItem(PINNED_KEY)
+    if (saved) return JSON.parse(saved) as string[]
   } catch {}
+  return []
 }
 
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
-  const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent'>('all')
+  const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent' | 'pinned'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [favorites, setFavorites] = useState<BlockData[]>(loadFavorites)
   const [recent, setRecent] = useState<BlockData[]>(loadRecent)
+  const [pinned, setPinned] = useState<string[]>(loadPinned)
   const [failedTextures, setFailedTextures] = useState<Set<string>>(new Set())
   const [showPicker, setShowPicker] = useState<number | null>(null)
   const [pickerSearch, setPickerSearch] = useState('')
+  const [page, setPage] = useState(0)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+
+  const filteredBlocks = useMemo(() => {
+    if (searchQuery.trim()) return searchBlocks(searchQuery)
+    if (activeCategory === 'recent') return recent
+    if (activeCategory === 'pinned') return pinned.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    if (activeCategory === 'all') return BLOCKS
+    return getBlocksByCategory(activeCategory)
+  }, [activeCategory, searchQuery, recent, pinned])
+
+  const displayedBlocks = useMemo(() => {
+    if (searchQuery.trim() || activeCategory === 'recent' || activeCategory === 'pinned') {
+      return filteredBlocks
+    }
+    return filteredBlocks.slice(0, (page + 1) * PAGE_SIZE)
+  }, [filteredBlocks, page, searchQuery, activeCategory])
+
+  const hasMore = useMemo(() => {
+    if (searchQuery.trim() || activeCategory === 'recent' || activeCategory === 'pinned') return false
+    return filteredBlocks.length > displayedBlocks.length
+  }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeCategory])
+
+  useEffect(() => {
+    setPage(0)
+  }, [activeCategory, searchQuery])
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!gridRef.current || !hasMore) return
+      const { scrollTop, scrollHeight, clientHeight } = gridRef.current
+      if (scrollTop + clientHeight >= scrollHeight - 50) {
+        setPage(p => p + 1)
+      }
+    }
+    const grid = gridRef.current
+    if (grid) grid.addEventListener('scroll', handleScroll)
+    return () => grid?.removeEventListener('scroll', handleScroll)
+  }, [hasMore])
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -86,7 +130,7 @@ export function BlockBrowser() {
       setRecent(prev => {
         const filtered = prev.filter(b => b.id !== selectedBlock.id)
         const newRecent = [selectedBlock, ...filtered].slice(0, MAX_RECENT)
-        saveRecent(newRecent)
+        try { localStorage.setItem(RECENT_KEY, JSON.stringify(newRecent.map(b => b.id))) } catch {}
         return newRecent
       })
     }
@@ -102,13 +146,6 @@ export function BlockBrowser() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  const filteredBlocks = useMemo(() => {
-    if (searchQuery.trim()) return searchBlocks(searchQuery)
-    if (activeCategory === 'recent') return recent
-    if (activeCategory === 'all') return BLOCKS
-    return getBlocksByCategory(activeCategory)
-  }, [activeCategory, searchQuery, recent])
 
   const handleTextureError = useCallback((id: string) => {
     setFailedTextures(prev => new Set(prev).add(id))
@@ -127,7 +164,7 @@ export function BlockBrowser() {
       const newFavs = [...favorites]
       newFavs[showPicker] = block
       setFavorites(newFavs)
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id)))
+      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
       setShowPicker(null)
       setPickerSearch('')
     }
@@ -142,13 +179,29 @@ export function BlockBrowser() {
     }
     const newFavs = [...favorites.slice(1), selectedBlock]
     setFavorites(newFavs)
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id)))
+    try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+  }
+
+  const handleTogglePin = () => {
+    if (!selectedBlock) return
+    if (pinned.includes(selectedBlock.id)) {
+      const newPinned = pinned.filter(id => id !== selectedBlock.id)
+      setPinned(newPinned)
+      try { localStorage.setItem(PINNED_KEY, JSON.stringify(newPinned)) } catch {}
+    } else {
+      const newPinned = [selectedBlock.id, ...pinned].slice(0, 18)
+      setPinned(newPinned)
+      try { localStorage.setItem(PINNED_KEY, JSON.stringify(newPinned)) } catch {}
+    }
   }
 
   const pickerBlocks = useMemo(() => {
-    if (pickerSearch.trim()) return searchBlocks(pickerSearch)
-    return BLOCKS.slice(0, 100)
+    if (pickerSearch.trim()) return searchBlocks(pickerSearch).slice(0, 80)
+    return BLOCKS.slice(0, 80)
   }, [pickerSearch])
+
+  const isPinned = selectedBlock ? pinned.includes(selectedBlock.id) : false
+  const isInQuickbar = selectedBlock ? favorites.some(f => f.id === selectedBlock.id) : false
 
   return (
     <div className="mc-browser">
@@ -158,7 +211,7 @@ export function BlockBrowser() {
       </div>
 
       <div className="mc-hotbar-container">
-        <div className="mc-hotbar-label">快捷栏</div>
+        <div className="mc-hotbar-label">快捷栏 <span className="mc-hint">1-9</span></div>
         <div className="mc-hotbar">
           {favorites.map((block, idx) => {
             const isActive = selectedBlock?.id === block.id
@@ -194,13 +247,13 @@ export function BlockBrowser() {
         <div className="mc-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
           <div className="mc-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
             <div className="mc-picker-title">
-              <span>替换 {showPicker + 1}</span>
+              <span>快捷栏 {showPicker + 1}</span>
               <button className="mc-picker-x" onClick={() => { setShowPicker(null); setPickerSearch('') }}>×</button>
             </div>
             <div className="mc-picker-search">
               <input
                 type="text"
-                placeholder="搜索..."
+                placeholder="搜索方块..."
                 value={pickerSearch}
                 onChange={e => setPickerSearch(e.target.value)}
                 autoFocus
@@ -236,7 +289,7 @@ export function BlockBrowser() {
         <input
           ref={searchInputRef}
           type="text"
-          placeholder="搜索方块... (按 / 聚焦)"
+          placeholder="搜索... (按 / )"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
         />
@@ -246,16 +299,23 @@ export function BlockBrowser() {
       </div>
 
       <div className="mc-tabs">
-        {activeCategory === 'recent' ? (
-          <button className="mc-tab active">最近</button>
-        ) : (
-          <button className="mc-tab" onClick={() => setActiveCategory('recent')}>最近 ({recent.length})</button>
-        )}
+        <button
+          className={`mc-tab ${activeCategory === 'recent' ? 'active' : ''}`}
+          onClick={() => setActiveCategory('recent')}
+        >
+          最近 ({recent.length})
+        </button>
+        <button
+          className={`mc-tab ${activeCategory === 'pinned' ? 'active' : ''}`}
+          onClick={() => setActiveCategory('pinned')}
+        >
+          收藏 ({pinned.length})
+        </button>
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
-            className={`mc-tab ${activeCategory === cat.key && !searchQuery ? 'active' : ''}`}
-            onClick={() => { setActiveCategory(cat.key); setSearchQuery('') }}
+            className={`mc-tab ${activeCategory === cat.key ? 'active' : ''}`}
+            onClick={() => setActiveCategory(cat.key)}
           >
             {cat.label}
           </button>
@@ -264,23 +324,25 @@ export function BlockBrowser() {
 
       <div className="mc-grid-header">
         {searchQuery ? (
-          <span>搜索: "{searchQuery}" ({filteredBlocks.length} 结果)</span>
+          <span>"{searchQuery}" → {filteredBlocks.length} 个结果</span>
         ) : activeCategory === 'recent' ? (
           <span>最近使用</span>
+        ) : activeCategory === 'pinned' ? (
+          <span>收藏的方块</span>
         ) : activeCategory === 'all' ? (
-          <span>全部方块</span>
+          <span>全部 ({filteredBlocks.length})</span>
         ) : (
           <span>{CATEGORIES.find(c => c.key === activeCategory)?.label}</span>
         )}
       </div>
 
-      <div className="mc-grid">
-        {filteredBlocks.slice(0, 150).map(block => (
+      <div className="mc-grid" ref={gridRef}>
+        {displayedBlocks.map(block => (
           <div
             key={block.id}
             className={`mc-item ${selectedBlock?.id === block.id ? 'selected' : ''}`}
             onClick={() => setSelectedBlock(block)}
-            title={`${block.nameZh}\n${block.id.replace('minecraft:', '')}\n硬度: ${block.hardness}`}
+            title={block.nameZh}
           >
             <div className="mc-item-inner">
               {!failedTextures.has(block.id) ? (
@@ -289,13 +351,16 @@ export function BlockBrowser() {
                 <div style={{ backgroundColor: block.color }} />
               )}
             </div>
+            {pinned.includes(block.id) && <div className="mc-item-pin">📌</div>}
           </div>
         ))}
         {filteredBlocks.length === 0 && (
           <div className="mc-empty">未找到方块</div>
         )}
-        {filteredBlocks.length > 150 && (
-          <div className="mc-more">+{filteredBlocks.length - 150} 更多</div>
+        {hasMore && (
+          <div className="mc-more" onClick={() => setPage(p => p + 1)}>
+            加载更多 (+{filteredBlocks.length - displayedBlocks.length})
+          </div>
         )}
       </div>
 
@@ -312,12 +377,26 @@ export function BlockBrowser() {
             <div className="mc-footer-name">{selectedBlock.nameZh}</div>
             <div className="mc-footer-meta">
               <span className="mc-footer-id">{selectedBlock.id.replace('minecraft:', '')}</span>
-              <span className="mc-footer-hardness">硬度: {selectedBlock.hardness}</span>
+              <span className="mc-footer-hardness">硬度 {selectedBlock.hardness}</span>
+              <span className="mc-footer-cat">{CATEGORIES.find(c => c.key === selectedBlock.category)?.label || selectedBlock.category}</span>
             </div>
           </div>
-          <button className="mc-star" onClick={handleAddToQuickbar} title="加入快捷栏">
-            {favorites.some(f => f.id === selectedBlock.id) ? '✓' : '★'}
-          </button>
+          <div className="mc-footer-actions">
+            <button
+              className={`mc-action-btn ${isPinned ? 'active' : ''}`}
+              onClick={handleTogglePin}
+              title={isPinned ? '取消收藏' : '添加收藏'}
+            >
+              {isPinned ? '📌' : '☆'}
+            </button>
+            <button
+              className={`mc-action-btn ${isInQuickbar ? 'inbar' : ''}`}
+              onClick={handleAddToQuickbar}
+              title={isInQuickbar ? '已在快捷栏' : '加入快捷栏'}
+            >
+              {isInQuickbar ? '✓' : '+'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -367,6 +446,12 @@ export function BlockBrowser() {
           margin-bottom: 6px;
           text-transform: uppercase;
           letter-spacing: 1px;
+        }
+
+        .mc-hint {
+          color: #5c9bd4;
+          margin-left: 6px;
+          font-size: 9px;
         }
 
         .mc-hotbar {
@@ -506,8 +591,6 @@ export function BlockBrowser() {
           padding: 4px 12px 6px;
           font-size: 10px;
           color: #666;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
           background: #b8b8b8;
           border-bottom: 1px solid #a0a0a0;
         }
@@ -521,8 +604,6 @@ export function BlockBrowser() {
           gap: 2px;
           align-content: start;
           background: #8b8b8b;
-          border-top: 2px solid #6b6b6b;
-          border-bottom: 2px solid #a0a0a0;
         }
 
         .mc-grid::-webkit-scrollbar {
@@ -531,7 +612,6 @@ export function BlockBrowser() {
 
         .mc-grid::-webkit-scrollbar-track {
           background: #5a5a5a;
-          border-left: 2px solid #6b6b6b;
         }
 
         .mc-grid::-webkit-scrollbar-thumb {
@@ -578,6 +658,14 @@ export function BlockBrowser() {
           inset: 0;
         }
 
+        .mc-item-pin {
+          position: absolute;
+          top: 1px;
+          right: 1px;
+          font-size: 8px;
+          z-index: 2;
+        }
+
         .mc-empty {
           grid-column: 1 / -1;
           text-align: center;
@@ -589,11 +677,16 @@ export function BlockBrowser() {
         .mc-more {
           grid-column: 1 / -1;
           text-align: center;
-          padding: 6px;
+          padding: 8px;
           background: #6a6a6a;
           color: #ccc;
-          font-size: 10px;
+          font-size: 11px;
           border: 2px solid #555;
+          cursor: pointer;
+        }
+
+        .mc-more:hover {
+          background: #7a7a7a;
         }
 
         .mc-footer {
@@ -647,7 +740,8 @@ export function BlockBrowser() {
 
         .mc-footer-meta {
           display: flex;
-          gap: 8px;
+          flex-wrap: wrap;
+          gap: 6px;
           margin-top: 2px;
         }
 
@@ -662,21 +756,40 @@ export function BlockBrowser() {
           color: #666;
         }
 
-        .mc-star {
-          width: 32px;
-          height: 32px;
+        .mc-footer-cat {
+          font-size: 10px;
+          color: #5c9bd4;
+        }
+
+        .mc-footer-actions {
+          display: flex;
+          gap: 4px;
+        }
+
+        .mc-action-btn {
+          width: 28px;
+          height: 28px;
           font-size: 14px;
           background: #3b3b3b;
           border: 2px solid;
           border-color: #555 #2a2a2a #2a2a2a #555;
           color: #888;
           cursor: pointer;
-          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
-        .mc-star:hover {
+        .mc-action-btn:hover {
           background: #4a4a4a;
+        }
+
+        .mc-action-btn.active {
           color: #ffd700;
+        }
+
+        .mc-action-btn.inbar {
+          color: #5c9bd4;
         }
 
         .mc-picker-overlay {
