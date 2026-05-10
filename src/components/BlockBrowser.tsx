@@ -1,93 +1,108 @@
-import React from 'react'
+import { useState, useMemo } from 'react'
 import { useSceneStore } from '@/stores/sceneStore'
 import { BLOCKS, getBlocksByCategory } from '@/utils/blocks'
-import type { BlockCategory } from '@/types'
+import type { BlockCategory, BlockData } from '@/types'
 
-const CATEGORIES: { key: BlockCategory; label: string; icon: string }[] = [
-  { key: 'building', label: '建筑方块', icon: '🏗️' },
-  { key: 'natural', label: '自然方块', icon: '🌿' },
-  { key: 'redstone', label: '红石元件', icon: '⚡' },
-  { key: 'decoration', label: '装饰方块', icon: '🎨' },
-  { key: 'utility', label: '实用方块', icon: '🔧' },
+const CATEGORIES: Array<{ key: BlockCategory; label: string; icon: string }> = [
+  { key: 'building', label: '建筑', icon: '🏗️' },
+  { key: 'natural', label: '自然', icon: '🌿' },
+  { key: 'redstone', label: '红石', icon: '⚡' },
+  { key: 'decoration', label: '装饰', icon: '🎨' },
+  { key: 'utility', label: '实用', icon: '🔧' },
 ]
 
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
-  const [activeCategory, setActiveCategory] = React.useState<BlockCategory>('building')
-  const [searchQuery, setSearchQuery] = React.useState('')
+  const [activeCategory, setActiveCategory] = useState<BlockCategory>('building')
+  const [searchQuery, setSearchQuery] = useState('')
 
-  const filteredBlocks = React.useMemo(() => {
+  const filteredBlocks = useMemo(() => {
     const blocks = getBlocksByCategory(activeCategory)
-    if (!searchQuery) return blocks
+    if (!searchQuery.trim()) return blocks
     return blocks.filter(b => 
       b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.nameZh.includes(searchQuery)
     )
   }, [activeCategory, searchQuery])
 
+  const blockCount = BLOCKS.length
+
   return (
-    <div className="w-72 bg-gray-900/95 backdrop-blur-sm border-r border-gray-700 flex flex-col h-full">
-      <div className="p-4 border-b border-gray-700">
-        <h2 className="text-lg font-display font-bold text-white flex items-center gap-2">
-          <span className="text-2xl">📦</span>
-          <span>方块浏览器</span>
-        </h2>
+    <div className="flex flex-col flex-shrink-0 border-r" style={{
+      width: 'var(--sidebar-width)',
+      background: 'var(--color-bg-surface)',
+      borderColor: 'var(--color-border)'
+    }}>
+      <div className="px-4 py-3 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="text-sm font-display font-bold tracking-wider" style={{ color: 'var(--color-text-primary)' }}>
+          方块浏览器
+        </div>
+        <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+          {blockCount} 个方块
+        </div>
       </div>
 
-      <div className="p-3 border-b border-gray-700">
+      <div className="px-3 py-2 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         <input
           type="text"
           placeholder="搜索方块..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-mc-green focus:ring-1 focus:ring-mc-green text-sm"
+          className="input-search"
         />
       </div>
 
-      <div className="flex flex-wrap gap-1 p-2 border-b border-gray-700">
+      <div className="flex flex-wrap gap-0.5 px-2 py-2 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
             onClick={() => setActiveCategory(cat.key)}
-            className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${
-              activeCategory === cat.key
-                ? 'bg-mc-green text-white shadow-mc-sm'
-                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-            }`}
+            className={`category-tab ${activeCategory === cat.key ? 'active' : ''}`}
           >
-            {cat.icon} {cat.label}
+            <span>{cat.icon}</span>
+            <span>{cat.label}</span>
           </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
         {filteredBlocks.map(block => (
-          <button
+          <div
             key={block.id}
             onClick={() => setSelectedBlock(block)}
-            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-all text-left ${
-              selectedBlock.id === block.id
-                ? 'bg-mc-green/30 border-2 border-mc-green'
-                : 'bg-gray-800/50 hover:bg-gray-700/50 border-2 border-transparent'
-            }`}
+            className={`block-item ${selectedBlock.id === block.id ? 'selected' : ''}`}
           >
-            <div 
-              className="w-8 h-8 rounded shadow-mc-sm"
-              style={{ backgroundColor: block.color }}
-            />
+            <div className="block-icon" style={{ backgroundColor: block.color }} />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-white truncate">{block.nameZh}</div>
-              <div className="text-xs text-gray-400 truncate">{block.name}</div>
+              <div className="block-name truncate">{block.nameZh}</div>
+              <div className="block-name-en truncate">{block.name}</div>
             </div>
-          </button>
+          </div>
         ))}
+        
+        {filteredBlocks.length === 0 && (
+          <div className="py-8 text-center" style={{ color: 'var(--color-text-muted)' }}>
+            <div className="text-2xl mb-2">🔍</div>
+            <div className="text-xs">没有找到方块</div>
+          </div>
+        )}
       </div>
 
-      <div className="p-3 border-t border-gray-700">
-        <div className="text-xs text-gray-400">
-          共 {BLOCKS.length} 个方块 | 当前: <span className="text-mc-green">{selectedBlock.nameZh}</span>
+      {selectedBlock && (
+        <div className="px-3 py-2 border-t flex-shrink-0" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-sm shadow-voxel" style={{ backgroundColor: selectedBlock.color }} />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+                {selectedBlock.nameZh}
+              </div>
+              <div className="text-[10px] truncate" style={{ color: 'var(--color-text-muted)' }}>
+                {selectedBlock.id}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
