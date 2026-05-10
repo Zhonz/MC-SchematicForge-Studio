@@ -4,6 +4,7 @@ import { useStructureStore } from '@/stores/structureStore'
 
 const CATEGORIES = [
   { key: 'all', label: '全部' },
+  { key: 'redstone', label: '红石' },
   { key: 'nether', label: '下界' },
   { key: 'ocean', label: '海洋' },
   { key: 'end', label: '末地' },

@@ -7,22 +7,33 @@ import { StructureGhost } from '@/utils/StructureGhost'
 
 const BLOCK_SIZE = 1
 const COLORS: Record<string, string> = {
+  // Building blocks
   'minecraft:stone': '#808080',
   'minecraft:cobblestone': '#6B6B6B',
   'minecraft:oak_planks': '#BC9862',
   'minecraft:spruce_planks': '#6B5430',
   'minecraft:birch_planks': '#D4C59E',
+  'minecraft:dark_oak_planks': '#4A3728',
   'minecraft:bricks': '#9B5B3C',
   'minecraft:stone_bricks': '#7A7A7A',
   'minecraft:glass': '#CCE5FF',
+  'minecraft:tinted_glass': '#4A4A5A',
   'minecraft:white_wool': '#F0F0F0',
   'minecraft:concrete': '#D9D9D9',
+  'minecraft:obsidian': '#1a1a2e',
+  'minecraft:crying_obsidian': '#2a1a4e',
+  // Natural blocks
   'minecraft:grass_block': '#5D8C3E',
   'minecraft:dirt': '#866043',
   'minecraft:oak_log': '#7B5B3A',
   'minecraft:spruce_log': '#4A3728',
   'minecraft:sand': '#DBD3A0',
   'minecraft:gravel': '#8A8A8A',
+  'minecraft:end_stone': '#E8E8CC',
+  'minecraft:netherrack': '#8B3A3A',
+  'minecraft:basalt': '#3D3D4A',
+  'minecraft:blackstone': '#1a1a1a',
+  // Redstone blocks
   'minecraft:redstone_block': '#B80000',
   'minecraft:redstone_wire': '#FF0000',
   'minecraft:redstone_torch': '#FF6600',
@@ -30,21 +41,47 @@ const COLORS: Record<string, string> = {
   'minecraft:comparator': '#8B8B8B',
   'minecraft:lever': '#808080',
   'minecraft:stone_button': '#909090',
+  'minecraft:wooden_button': '#BC9862',
   'minecraft:piston': '#9B9B9B',
   'minecraft:sticky_piston': '#5D8C3E',
   'minecraft:observer': '#6B6B6B',
+  'minecraft:hopper': '#6B6B6B',
+  'minecraft:dropper': '#8B8B8B',
+  'minecraft:dispenser': '#8B8B8B',
+  'minecraft:trapped_chest': '#9B7B4B',
+  'minecraft:daylight_detector': '#D4C59E',
+  'minecraft:heavy_weighted_pressure_plate': '#E8E8E8',
+  'minecraft:light_weighted_pressure_plate': '#FFAA00',
+  'minecraft:stone_pressure_plate': '#909090',
+  'minecraft:tripwire_hook': '#BC9862',
+  // Decoration blocks
   'minecraft:oak_stairs': '#BC9862',
   'minecraft:oak_slab': '#BC9862',
   'minecraft:stone_stairs': '#808080',
   'minecraft:torch': '#FFAA00',
+  'minecraft:soul_torch': '#6699CC',
   'minecraft:ladder': '#BC9862',
   'minecraft:iron_bars': '#404040',
+  'minecraft:chain': '#505050',
+  // Utility blocks
   'minecraft:crafting_table': '#BC9862',
   'minecraft:furnace': '#808080',
   'minecraft:chest': '#BC9862',
+  'minecraft:ender_chest': '#2A2A4A',
   'minecraft:iron_block': '#E8E8E8',
   'minecraft:gold_block': '#FFAA00',
   'minecraft:diamond_block': '#4AEDD9',
+  'minecraft:netherite_block': '#4A4A52',
+  // Bounce blocks
+  'minecraft:slime_block': '#7FCC19',
+  'minecraft:honey_block': '#E4A128',
+  'minecraft:honeycomb_block': '#DDA62B',
+  // Target block
+  'minecraft:target': '#CC3333',
+  // Sculk blocks
+  'minecraft:sculk_sensor': '#1A5F5F',
+  'minecraft:sculk_catalyst': '#1A4F4F',
+  'minecraft:sculk_shrieker': '#1A3F3F',
 }
 
 export function SceneViewport() {
@@ -404,6 +441,10 @@ export function SceneViewport() {
       if (activeStructures.has(structure.id) && !structureGhostsRef.current.has(structure.id)) {
         const color = getCategoryColor(structure.category)
         const ghost = new StructureGhost(structure.size, structure.center, color)
+        
+        if (structure.blocks) {
+          ghost.addBlocks(structure.blocks)
+        }
         
         structure.spawners.forEach(spawner => {
           ghost.addSpawnerMarker(
