@@ -122,6 +122,12 @@ export function BlockBrowser() {
   const [showSortMenu, setShowSortMenu] = useState(false)
   const [categoryFilters, setCategoryFilters] = useState<CategoryFilter>([])
   const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [previewBlock, setPreviewBlock] = useState<BlockData | null>(null)
+  const [previewPos, setPreviewPos] = useState({ x: 0, y: 0 })
+  const [searchHighlight, setSearchHighlight] = useState<{ query: string; matchedBlock: BlockData | null }>({ query: '', matchedBlock: null })
+  const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set())
+  const [batchMode, setBatchMode] = useState(false)
+  const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -208,6 +214,12 @@ export function BlockBrowser() {
         }
         return
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault()
+        if (batchMode) { selectAllVisible() }
+        else { setBatchMode(true); selectAllVisible() }
+        return
+      }
       if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus(); return }
       if (e.key === '?') { e.preventDefault(); setShowHelp(h => !h); return }
       if (e.key === 'b' || e.key === 'B') { e.preventDefault(); searchInputRef.current?.focus(); return }
@@ -246,6 +258,19 @@ export function BlockBrowser() {
           setSelectedBlock(displayedBlocks[displayedBlocks.length - 1])
           gridRef.current?.scrollTo({ top: gridRef.current.scrollHeight, behavior: 'smooth' })
         }
+      }
+      if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        if (batchMode) {
+          selectAllVisible()
+        } else {
+          setBatchMode(true)
+          selectAllVisible()
+        }
+        return
+      }
+      if (e.key === 'Escape') {
+        if (batchMode) { clearSelection(); return }
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedBlock && !showPicker) {
@@ -459,6 +484,123 @@ export function BlockBrowser() {
   const clearCategoryFilters = () => setCategoryFilters([])
   const selectAllFilters = () => setCategoryFilters(['building', 'natural', 'decoration', 'redstone', 'utility'])
 
+  const clearPreviewTimeout = () => {
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current)
+      previewTimeoutRef.current = null
+    }
+  }
+
+  const handleMouseEnterPreview = (block: BlockData, e: React.MouseEvent) => {
+    clearPreviewTimeout()
+    previewTimeoutRef.current = setTimeout(() => {
+      setPreviewBlock(block)
+      setPreviewPos({ x: e.clientX, y: e.clientY })
+    }, 400)
+  }
+
+  const handleMouseLeavePreview = () => {
+    clearPreviewTimeout()
+    setPreviewBlock(null)
+  }
+
+  const handleMouseMovePreview = (e: React.MouseEvent) => {
+    if (previewBlock) {
+      setPreviewPos({ x: e.clientX, y: e.clientY })
+    }
+  }
+
+  const fuzzyMatch = (text: string, query: string): boolean => {
+    const lowerText = text.toLowerCase()
+    const lowerQuery = query.toLowerCase()
+    if (lowerText.includes(lowerQuery)) return true
+    let qi = 0
+    for (let i = 0; i < lowerText.length && qi < lowerQuery.length; i++) {
+      if (lowerText[i] === lowerQuery[qi]) qi++
+    }
+    return qi === lowerQuery.length
+  }
+
+  const getHighlightedText = (text: string, query: string) => {
+    if (!query) return text
+    const lowerText = text.toLowerCase()
+    const lowerQuery = query.toLowerCase()
+    const idx = lowerText.indexOf(lowerQuery)
+    if (idx === -1) return text
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark className="bp-highlight">{text.slice(idx, idx + query.length)}</mark>
+        {text.slice(idx + query.length)}
+      </>
+    )
+  }
+
+  const toggleBlockSelection = (block: BlockData, e?: React.MouseEvent) => {
+    if (!batchMode) {
+      setSelectedBlock(block)
+      return
+    }
+    setSelectedBlocks(prev => {
+      const newSet = new Set(prev)
+      if (e?.shiftKey && prev.size > 0) {
+        const lastSelected = Array.from(prev).pop()!
+        const blocks = displayedBlocks
+        const lastIdx = blocks.findIndex(b => b.id === lastSelected)
+        const currentIdx = blocks.findIndex(b => b.id === block.id)
+        const [start, end] = [Math.min(lastIdx, currentIdx), Math.max(lastIdx, currentIdx)]
+        for (let i = start; i <= end; i++) {
+          newSet.add(blocks[i].id)
+        }
+      } else if (e?.ctrlKey || e?.metaKey) {
+        if (newSet.has(block.id)) newSet.delete(block.id)
+        else newSet.add(block.id)
+      } else {
+        if (newSet.has(block.id) && newSet.size === 1) {
+          setBatchMode(false)
+          return new Set()
+        }
+        return new Set([block.id])
+      }
+      return newSet
+    })
+  }
+
+  const selectAllVisible = () => {
+    setSelectedBlocks(new Set(displayedBlocks.map(b => b.id)))
+    setBatchMode(true)
+  }
+
+  const clearSelection = () => {
+    setSelectedBlocks(new Set())
+    setBatchMode(false)
+  }
+
+  const handleBatchPin = () => {
+    const newPinned = [...new Set([...pinned, ...Array.from(selectedBlocks)])].slice(0, 18)
+    setPinned(newPinned)
+    clearSelection()
+  }
+
+  const handleBatchAddToQuickbar = () => {
+    const blocks = Array.from(selectedBlocks).map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    let newFavs = [...favorites]
+    for (const block of blocks) {
+      const existingIdx = newFavs.findIndex(f => f.id === block.id)
+      if (existingIdx === -1) {
+        newFavs = [...newFavs.slice(1), block]
+      }
+    }
+    setFavorites(newFavs)
+    clearSelection()
+  }
+
+  const handleBatchCopyIds = () => {
+    const ids = Array.from(selectedBlocks).map(id => id.replace('minecraft:', '')).join(', ')
+    navigator.clipboard.writeText(ids)
+    clearSelection()
+  }
+
   const pickerBlocks = useMemo(() => {
     if (pickerSearch.trim()) return searchBlocks(pickerSearch).slice(0, 80)
     return BLOCKS.slice(0, 80)
@@ -649,6 +791,44 @@ export function BlockBrowser() {
         )}
       </div>
 
+      {batchMode && selectedBlocks.size > 0 && (
+        <div className="bp-batch-bar">
+          <div className="bp-batch-info">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <rect x="1" y="1" width="4" height="4" rx="1"/>
+              <rect x="7" y="1" width="4" height="4" rx="1"/>
+              <rect x="1" y="7" width="4" height="4" rx="1"/>
+              <rect x="7" y="7" width="4" height="4" rx="1"/>
+            </svg>
+            已选择 <strong>{selectedBlocks.size}</strong> 个方块
+          </div>
+          <div className="bp-batch-actions">
+            <button onClick={selectAllVisible}>全选可见</button>
+            <button onClick={handleBatchPin}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M5 1l1.2 2.4 2.6.4-1.9 1.8.5 2.6L5 6.5 2.6 8.2l.5-2.6L1.2 3.8l2.6-.4L5 1z"/>
+              </svg>
+              批量收藏
+            </button>
+            <button onClick={handleBatchAddToQuickbar}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <rect x="1" y="1" width="8" height="8" rx="1" fill="none" stroke="currentColor"/>
+                <rect x="3" y="3" width="4" height="4" fill="currentColor"/>
+              </svg>
+              添加快捷栏
+            </button>
+            <button onClick={handleBatchCopyIds}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <rect x="3" y="1" width="6" height="7" rx="1" fill="none" stroke="currentColor"/>
+                <rect x="1" y="3" width="6" height="7" rx="1" fill="var(--bg-2)" stroke="currentColor"/>
+              </svg>
+              复制ID
+            </button>
+            <button onClick={clearSelection}>取消</button>
+          </div>
+        </div>
+      )}
+
       <div className="bp-tabs">
         <button className={`bp-tab ${activeTab === 'recent' ? 'active' : ''}`} onClick={() => setActiveTab('recent')}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
@@ -699,8 +879,8 @@ export function BlockBrowser() {
               onDragLeave={handleQuickbarDragLeave}
               onClick={() => handleSlotClick(block)}
               onContextMenu={e => handleSlotRightClick(e, idx)}
-              onMouseEnter={() => setHoveredBlock(block)}
-              onMouseLeave={() => setHoveredBlock(null)}
+              onMouseEnter={e => handleMouseEnterPreview(block, e)}
+              onMouseLeave={handleMouseLeavePreview}
               title={`${block.nameZh} [${idx + 1}]`}
             >
               <span className="bp-slot-num">{idx + 1}</span>
@@ -756,19 +936,19 @@ export function BlockBrowser() {
         )}
       </div>
 
-      <div className={`bp-grid ${viewMode}`} ref={gridRef}>
+      <div className={`bp-grid ${viewMode}`} ref={gridRef} onMouseMove={handleMouseMovePreview}>
         {displayedBlocks.map((block, idx) => (
           <div
             key={block.id}
-            className={`bp-item ${selectedBlock?.id === block.id ? 'selected' : ''} ${focusIndexRef.current === idx ? 'focused' : ''}`}
-            onClick={() => handleBlockClick(block)}
+            className={`bp-item ${selectedBlock?.id === block.id ? 'selected' : ''} ${focusIndexRef.current === idx ? 'focused' : ''} ${searchQuery && (block.nameZh.toLowerCase().includes(searchQuery.toLowerCase()) || block.id.includes(searchQuery.toLowerCase())) ? 'matched' : ''} ${selectedBlocks.has(block.id) ? 'batch-selected' : ''}`}
+            onClick={e => toggleBlockSelection(block, e)}
             onDoubleClick={() => handleBlockDoubleClick(block)}
             onContextMenu={e => handleBlockRightClick(e, block)}
-            onMouseEnter={() => setHoveredBlock(block)}
-            onMouseLeave={() => setHoveredBlock(null)}
+            onMouseEnter={e => handleMouseEnterPreview(block, e)}
+            onMouseLeave={handleMouseLeavePreview}
             draggable
             onDragStart={e => handleBlockDragStart(e, block)}
-            onDragEnd={() => setDraggedSlot(null)}
+            onDragEnd={() => { setDraggedSlot(null); handleMouseLeavePreview() }}
           >
             <div className="bp-item-img">
               {getTexture(block)}
@@ -808,13 +988,32 @@ export function BlockBrowser() {
         )}
       </div>
 
-      {hoveredBlock && (
-        <div className="bp-tooltip">
-          <div className="bp-tooltip-img">{getTexture(hoveredBlock)}</div>
-          <div className="bp-tooltip-info">
-            <div className="bp-tooltip-name">{hoveredBlock.nameZh}</div>
-            <div className="bp-tooltip-id">{hoveredBlock.id.replace('minecraft:', '')}</div>
-            <div className="bp-tooltip-meta">硬度 {hoveredBlock.hardness}</div>
+      {previewBlock && (
+        <div
+          className="bp-preview"
+          style={{
+            left: Math.min(previewPos.x + 16, window.innerWidth - 240),
+            top: Math.min(previewPos.y + 16, window.innerHeight - 200)
+          }}
+        >
+          <div className="bp-preview-img">
+            {getTexture(previewBlock)}
+          </div>
+          <div className="bp-preview-info">
+            <div className="bp-preview-name">{getHighlightedText(previewBlock.nameZh, searchQuery)}</div>
+            <div className="bp-preview-id">{previewBlock.id.replace('minecraft:', '')}</div>
+            <div className="bp-preview-meta">
+              <span className={`bp-preview-cat bp-cat-${previewBlock.category}`}>
+                {CATEGORIES.find(c => c.key === previewBlock.category)?.label || previewBlock.category}
+              </span>
+              <span>硬度 {previewBlock.hardness}</span>
+            </div>
+            {searchQuery && (
+              <div className="bp-preview-hint">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 5l2 2 4-4" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+                匹配搜索结果
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -910,7 +1109,7 @@ export function BlockBrowser() {
         </div>
       )}
 
-      {selectedBlock && !hoveredBlock && (
+      {selectedBlock && !previewBlock && (
         <div className="bp-footer">
           <div className="bp-footer-icon">
             {getTexture(selectedBlock)}
@@ -1525,50 +1724,99 @@ export function BlockBrowser() {
           border-color: var(--border-light);
         }
 
-        .bp-tooltip {
+        .bp-preview {
           position: fixed;
-          bottom: 80px;
-          left: 50%;
-          transform: translateX(-50%);
           display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 10px 14px;
+          gap: 14px;
+          padding: 14px;
           background: var(--mc-dark);
           border: 1px solid var(--border);
-          border-radius: 6px;
-          z-index: 300;
-          box-shadow: 0 8px 24px rgba(0,0,0,0.6);
-          animation: tooltipIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          border-radius: 8px;
+          z-index: 400;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+          animation: previewIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          pointer-events: none;
+          min-width: 200px;
         }
-        @keyframes tooltipIn {
-          from { opacity: 0; transform: translateX(-50%) translateY(8px); }
-          to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        @keyframes previewIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
         }
-        .bp-tooltip-img {
+        .bp-preview-img {
           position: relative;
-          width: 40px;
-          height: 40px;
+          width: 64px;
+          height: 64px;
           background: var(--bg-2);
-          border: 1px solid var(--border);
-          border-radius: 4px;
+          border: 2px solid var(--border);
+          border-radius: 6px;
           overflow: hidden;
           flex-shrink: 0;
+          box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);
         }
-        .bp-tooltip-img img,
-        .bp-tooltip-img .bp-fallback {
+        .bp-preview-img img,
+        .bp-preview-img .bp-fallback {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
-        .bp-tooltip-info { display: flex; flex-direction: column; gap: 2px; }
-        .bp-tooltip-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
-        .bp-tooltip-id { font-size: 10px; color: var(--text-3); font-family: monospace; }
-        .bp-tooltip-meta { font-size: 10px; color: var(--text-3); }
+        .bp-preview-info { display: flex; flex-direction: column; gap: 4px; }
+        .bp-preview-name { font-size: 14px; font-weight: 600; color: var(--text-1); }
+        .bp-preview-id { font-size: 11px; color: var(--text-3); font-family: monospace; }
+        .bp-preview-meta { display: flex; gap: 8px; font-size: 10px; color: var(--text-2); margin-top: 4px; }
+        .bp-preview-cat {
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 9px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .bp-cat-building { background: #5a4a3a; color: #d4a574; }
+        .bp-cat-natural { background: #3a5a3a; color: #74d474; }
+        .bp-cat-decocation { background: #5a3a5a; color: #d474d4; }
+        .bp-cat-redstone { background: #5a3a3a; color: #d47474; }
+        .bp-cat-utility { background: #3a4a5a; color: #74a4d4; }
+        .bp-preview-hint {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 9px;
+          color: var(--accent);
+          margin-top: 6px;
+          padding-top: 6px;
+          border-top: 1px solid var(--border);
+        }
+        .bp-highlight {
+          background: rgba(245, 200, 66, 0.3);
+          color: var(--mc-gold);
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+        .bp-item.matched {
+          box-shadow: 0 0 0 1px var(--mc-gold), 0 0 8px rgba(245, 200, 66, 0.2);
+        }
+        .bp-item.batch-selected {
+          border-color: var(--accent) !important;
+          box-shadow: 0 0 0 2px rgba(74, 143, 212, 0.4), 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .bp-item.batch-selected::after {
+          content: '';
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          width: 14px;
+          height: 14px;
+          background: var(--accent);
+          border-radius: 50%;
+          z-index: 10;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 5l2 2 4-4' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+          background-size: 10px;
+          background-position: center;
+          background-repeat: no-repeat;
+        }
 
-        .bp-footer {
+        .bp-batch-bar {
           display: flex;
           align-items: center;
           gap: 12px;
@@ -1576,8 +1824,37 @@ export function BlockBrowser() {
           background: linear-gradient(180deg, var(--bg-1) 0%, var(--mc-dark) 100%);
           border-top: 1px solid var(--border);
         }
+        .bp-batch-info {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          color: var(--text-1);
+        }
+        .bp-batch-info strong { color: var(--accent); }
+        .bp-batch-actions {
+          display: flex;
+          gap: 6px;
+          margin-left: auto;
+        }
+        .bp-batch-actions button {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 6px 10px;
+          font-size: 11px;
+          background: var(--bg-2);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-1);
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s;
+        }
+        .bp-batch-actions button:hover { background: var(--bg-3); transform: translateY(-1px); }
+        .bp-batch-actions button:first-child { background: var(--accent-dim); border-color: var(--accent); }
 
-        .bp-footer-icon {
+        .bp-footer {
           position: relative;
           width: 40px;
           height: 40px;
