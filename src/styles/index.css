@@ -593,3 +593,170 @@ html, body {
 .overflow-auto { overflow: auto; }
 .relative { position: relative; }
 .absolute { position: absolute; }
+
+/* Block Config Panel */
+.block-config-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn var(--duration-fast) var(--ease-out);
+}
+
+.block-config-panel {
+  width: 320px;
+  background: var(--bg-elevation-2);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-4);
+  overflow: hidden;
+  animation: slideUp var(--duration-normal) var(--ease-spring);
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  background: var(--bg-elevation-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.config-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.config-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.config-close:hover {
+  background: var(--bg-elevation-4);
+  color: var(--text-primary);
+}
+
+.config-body {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.config-block-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--bg-elevation-1);
+  border-radius: var(--radius-md);
+}
+
+.config-block-id {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--accent-primary);
+}
+
+.config-coords {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.config-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.config-row label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.config-buttons {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.config-buttons button {
+  flex: 1;
+  min-width: 60px;
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg-elevation-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.config-buttons button:hover {
+  background: var(--bg-elevation-3);
+  border-color: var(--border-medium);
+}
+
+.config-buttons button.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #000000;
+}
+
+.config-footer {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-elevation-1);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.config-cancel,
+.config-save {
+  flex: 1;
+  padding: var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.config-cancel {
+  background: var(--bg-elevation-3);
+  border: 1px solid var(--border-medium);
+  color: var(--text-primary);
+}
+
+.config-cancel:hover {
+  background: var(--bg-elevation-4);
+}
+
+.config-save {
+  background: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  color: #000000;
+}
+
+.config-save:hover {
+  background: var(--accent-primary-dim);
+}

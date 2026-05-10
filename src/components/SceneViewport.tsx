@@ -101,8 +101,9 @@ export function SceneViewport() {
   })
   const [blockCount, setBlockCount] = useState(0)
   const [hoverInfo, setHoverInfo] = useState<{ x: number; y: number; z: number; blockId: string } | null>(null)
+  const [blockConfig, setBlockConfig] = useState<{ x: number; y: number; z: number; blockId: string } | null>(null)
 
-  const { placeBlock, breakBlock, toolMode, selectedBlock, getBlockKey, blocks } = useSceneStore()
+  const { placeBlock, breakBlock, toolMode, selectedBlock, getBlockKey, blocks, setBlockProperties } = useSceneStore()
   const { activeStructures } = useStructureStore()
 
   const initScene = useCallback(() => {
@@ -210,9 +211,9 @@ export function SceneViewport() {
     window.addEventListener('resize', handleResize)
 
     const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 2) {
+      if (e.button === 1) {
         controlsRef.current.isRotating = true
-      } else if (e.button === 1) {
+      } else if (e.button === 2) {
         controlsRef.current.isPanning = true
       } else if (e.button === 0) {
         handleClick(e)
@@ -387,6 +388,28 @@ export function SceneViewport() {
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault()
+      if (!container || !camera) return
+      
+      const rect = container.getBoundingClientRect()
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      )
+      
+      raycasterRef.current.setFromCamera(mouse, camera)
+      
+      const meshes = Array.from(blockMeshesRef.current.values())
+      const intersects = raycasterRef.current.intersectObjects(meshes)
+      
+      if (intersects.length > 0) {
+        const hit = intersects[0]
+        const pos = hit.object.position
+        const x = Math.round(pos.x - 0.5)
+        const y = Math.round(pos.y - 0.5)
+        const z = Math.round(pos.z - 0.5)
+        const blockId = hit.object.userData.blockId
+        setBlockConfig({ x, y, z, blockId })
+      }
     }
 
     container.addEventListener('mousedown', handleMouseDown)
@@ -536,6 +559,171 @@ export function SceneViewport() {
           <span className="stat-value">{blockCount}</span>
           <span className="stat-label">方块</span>
         </span>
+      </div>
+
+      {blockConfig && (
+        <BlockConfigPanel
+          block={blockConfig}
+          onClose={() => setBlockConfig(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+interface BlockConfigPanelProps {
+  block: { x: number; y: number; z: number; blockId: string }
+  onClose: () => void
+}
+
+function BlockConfigPanel({ block, onClose }: BlockConfigPanelProps) {
+  const { blocks, setBlockProperties } = useSceneStore()
+  const blockKey = `${block.x},${block.y},${block.z}`
+  const existingBlock = blocks.get(blockKey)
+  const currentProps = existingBlock?.properties || {}
+  
+  const [facing, setFacing] = useState<'north' | 'south' | 'east' | 'west' | 'up' | 'down' | undefined>(
+    currentProps.facing
+  )
+  const [delay, setDelay] = useState<1 | 2 | 3 | 4 | undefined>(currentProps.delay)
+  const [powered, setPowered] = useState(currentProps.powered)
+  const [half, setHalf] = useState<'top' | 'bottom' | undefined>(currentProps.half)
+  const [open, setOpen] = useState(currentProps.open)
+
+  const handleSave = () => {
+    setBlockProperties(block.x, block.y, block.z, {
+      facing,
+      delay,
+      powered,
+      half,
+      open
+    })
+    onClose()
+  }
+
+  const needsFacing = ['repeater', 'comparator', 'lever', 'piston', 'sticky_piston', 'observer', 
+    'dropper', 'dispenser', 'hopper', 'furnace', 'chest', 'trapped_chest', 'daylight_detector',
+    'wall_torch', 'redstone_wall_torch', 'ladder', 'tripwire_hook', 'door', 'trapdoor', 
+    'oak_door', 'spruce_door', 'iron_door', 'oak_trapdoor', 'spruce_trapdoor', 'iron_trapdoor',
+    'oak_button', 'stone_button', 'bell', 'lightning_rod'].some(t => block.blockId.includes(t))
+  
+  const needsDelay = block.blockId.includes('repeater')
+  const needsPowered = ['lever', 'oak_button', 'stone_button', 'redstone_torch', 'wall_torch',
+    'redstone_wall_torch', 'oak_pressure_plate', 'stone_pressure_plate'].some(t => block.blockId.includes(t))
+  const needsHalf = ['door', 'trapdoor', 'stairs', 'slab'].some(t => block.blockId.includes(t))
+  const needsOpen = ['door', 'trapdoor'].some(t => block.blockId.includes(t))
+
+  return (
+    <div className="block-config-overlay" onClick={onClose}>
+      <div className="block-config-panel" onClick={e => e.stopPropagation()}>
+        <div className="config-header">
+          <span className="config-title">方块属性配置</span>
+          <button className="config-close" onClick={onClose}>×</button>
+        </div>
+        <div className="config-body">
+          <div className="config-block-info">
+            <span className="config-block-id">{block.blockId}</span>
+            <span className="config-coords">({block.x}, {block.y}, {block.z})</span>
+          </div>
+          
+          {needsFacing && (
+            <div className="config-row">
+              <label>朝向 (Facing)</label>
+              <div className="config-buttons">
+                {(['north', 'south', 'east', 'west'] as const).map(dir => (
+                  <button
+                    key={dir}
+                    className={facing === dir ? 'active' : ''}
+                    onClick={() => setFacing(dir)}
+                  >
+                    {dir === 'north' ? '北' : dir === 'south' ? '南' : dir === 'east' ? '东' : '西'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {needsDelay && (
+            <div className="config-row">
+              <label>延迟 (Delay): {delay || 1} tick</label>
+              <div className="config-buttons">
+                {([1, 2, 3, 4] as const).map(d => (
+                  <button
+                    key={d}
+                    className={delay === d ? 'active' : ''}
+                    onClick={() => setDelay(d)}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {needsPowered && (
+            <div className="config-row">
+              <label>是否充能 (Powered)</label>
+              <div className="config-buttons">
+                <button
+                  className={powered ? 'active' : ''}
+                  onClick={() => setPowered(true)}
+                >
+                  是
+                </button>
+                <button
+                  className={!powered ? 'active' : ''}
+                  onClick={() => setPowered(false)}
+                >
+                  否
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {needsHalf && (
+            <div className="config-row">
+              <label>半砖位置 (Half)</label>
+              <div className="config-buttons">
+                <button
+                  className={half === 'top' ? 'active' : ''}
+                  onClick={() => setHalf('top')}
+                >
+                  上
+                </button>
+                <button
+                  className={half === 'bottom' ? 'active' : ''}
+                  onClick={() => setHalf('bottom')}
+                >
+                  下
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {needsOpen && (
+            <div className="config-row">
+              <label>是否打开 (Open)</label>
+              <div className="config-buttons">
+                <button
+                  className={open ? 'active' : ''}
+                  onClick={() => setOpen(true)}
+                >
+                  是
+                </button>
+                <button
+                  className={!open ? 'active' : ''}
+                  onClick={() => setOpen(false)}
+                >
+                  否
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="config-footer">
+          <button className="config-cancel" onClick={onClose}>取消</button>
+          <button className="config-save" onClick={handleSave}>保存</button>
+        </div>
       </div>
     </div>
   )

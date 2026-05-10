@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { BlockPlacement, ToolMode, CameraState, BlockData } from '@/types'
+import { BlockPlacement, ToolMode, CameraState, BlockData, BlockProperties } from '@/types'
 import { BLOCKS } from '@/utils/blocks'
 
 interface SceneStore {
@@ -13,7 +13,7 @@ interface SceneStore {
   schematicAuthor: string
   
   setBlocks: (blocks: Map<string, BlockPlacement>) => void
-  placeBlock: (x: number, y: number, z: number) => void
+  placeBlock: (x: number, y: number, z: number, properties?: BlockProperties) => void
   breakBlock: (x: number, y: number, z: number) => void
   setSelectedBlock: (block: BlockData) => void
   setToolMode: (mode: ToolMode) => void
@@ -27,6 +27,7 @@ interface SceneStore {
   importSchematic: () => void
   setSchematicName: (name: string) => void
   setSchematicAuthor: (author: string) => void
+  setBlockProperties: (x: number, y: number, z: number, properties: BlockProperties) => void
 }
 
 export const useSceneStore = create<SceneStore>((set, get) => ({
@@ -46,11 +47,11 @@ export const useSceneStore = create<SceneStore>((set, get) => ({
 
   setBlocks: (blocks) => set({ blocks }),
   
-  placeBlock: (x, y, z) => {
+  placeBlock: (x, y, z, properties) => {
     const { blocks, selectedBlock, getBlockKey } = get()
     const newBlocks = new Map(blocks)
     const key = getBlockKey(x, y, z)
-    newBlocks.set(key, { x, y, z, blockId: selectedBlock.id })
+    newBlocks.set(key, { x, y, z, blockId: selectedBlock.id, properties })
     set({ blocks: newBlocks })
   },
 
@@ -79,6 +80,17 @@ export const useSceneStore = create<SceneStore>((set, get) => ({
 
   setSchematicName: (name) => set({ schematicName: name }),
   setSchematicAuthor: (author) => set({ schematicAuthor: author }),
+
+  setBlockProperties: (x, y, z, properties) => {
+    const { blocks, getBlockKey } = get()
+    const key = getBlockKey(x, y, z)
+    const existingBlock = blocks.get(key)
+    if (existingBlock) {
+      const newBlocks = new Map(blocks)
+      newBlocks.set(key, { ...existingBlock, properties: { ...existingBlock.properties, ...properties } })
+      set({ blocks: newBlocks })
+    }
+  },
 
   saveScene: () => {
     const { blocks, schematicName } = get()
