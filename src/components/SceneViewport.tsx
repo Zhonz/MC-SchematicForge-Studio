@@ -76,8 +76,8 @@ export function SceneViewport() {
     const height = container.clientHeight
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x0a0e17)
-    scene.fog = new THREE.Fog(0x0a0e17, 60, 120)
+    scene.background = new THREE.Color(0x0d0d0f)
+    scene.fog = new THREE.Fog(0x0d0d0f, 60, 120)
     sceneRef.current = scene
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 500)
@@ -114,14 +114,14 @@ export function SceneViewport() {
     dirLight.shadow.bias = -0.0001
     scene.add(dirLight)
 
-    const gridHelper = new THREE.GridHelper(64, 64, 0x253449, 0x1a2332)
+    const gridHelper = new THREE.GridHelper(64, 64, 0x1a1a1f, 0x141418)
     scene.add(gridHelper)
 
     const planeGeometry = new THREE.PlaneGeometry(128, 128)
     const planeMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x111827,
+      color: 0x141418,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.9
     })
     const plane = new THREE.Mesh(planeGeometry, planeMaterial)
     plane.rotation.x = -Math.PI / 2
@@ -136,7 +136,7 @@ export function SceneViewport() {
 
     const ghostGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
     const ghostMaterial = new THREE.MeshBasicMaterial({
-      color: 0x4ade80,
+      color: 0x5cff7b,
       transparent: true,
       opacity: 0.3,
       depthWrite: false
@@ -149,7 +149,7 @@ export function SceneViewport() {
 
     const ghostEdges = new THREE.LineSegments(
       new THREE.EdgesGeometry(ghostGeometry),
-      new THREE.LineBasicMaterial({ color: 0x4ade80, linewidth: 2 })
+      new THREE.LineBasicMaterial({ color: 0x5cff7b, linewidth: 2 })
     )
     ghostBlock.add(ghostEdges)
 
@@ -261,10 +261,7 @@ export function SceneViewport() {
             ghostBlockRef.current.visible = false
             setHoverInfo(null)
           }
-        } else if (hit.object.userData.isGhost) {
-          ghostBlockRef.current.visible = false
-          setHoverInfo(null)
-        } else {
+        } else if (!hit.object.userData.isGhost) {
           const normal = hit.face?.normal
           if (normal) {
             const blockPos = hit.object.position
@@ -383,10 +380,10 @@ export function SceneViewport() {
   useEffect(() => {
     if (ghostBlockRef.current) {
       const material = ghostBlockRef.current.material as THREE.MeshBasicMaterial
-      material.color.set(COLORS[selectedBlock.id] || '#4ade80')
+      material.color.set(COLORS[selectedBlock.id] || '#5cff7b')
       const edges = ghostBlockRef.current.children[0] as THREE.LineSegments
       if (edges && edges.material) {
-        (edges.material as THREE.LineBasicMaterial).color.set(COLORS[selectedBlock.id] || '#4ade80')
+        (edges.material as THREE.LineBasicMaterial).color.set(COLORS[selectedBlock.id] || '#5cff7b')
       }
     }
   }, [selectedBlock])
@@ -473,59 +470,35 @@ export function SceneViewport() {
   }, [updateBlocks, blocks])
 
   return (
-    <div className="flex-1 relative overflow-hidden" ref={containerRef}>
-      <div className="absolute top-3 left-3 z-10 pointer-events-none space-y-2">
-        <div className="px-3 py-2 rounded-md backdrop-blur-sm border" style={{
-          background: 'rgba(17, 24, 39, 0.85)',
-          borderColor: 'var(--color-border)'
-        }}>
-          <div className="text-xs font-display font-bold tracking-wider" style={{
-            color: 'var(--color-accent-green)'
-          }}>
-            SCHEMATICFORGE
-          </div>
-          <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-            {toolMode === 'place' && '🔨 放置模式 - 点击放置方块'}
-            {toolMode === 'break' && '⛏️ 破坏模式 - 点击破坏方块'}
-            {toolMode === 'select' && '📐 选择模式'}
+    <div className="viewport" ref={containerRef}>
+      <div className="viewport-info">
+        <div className="info-card">
+          <div className="info-label">模式</div>
+          <div className={`info-value mode-${toolMode}`}>
+            {toolMode === 'place' && '放置'}
+            {toolMode === 'break' && '破坏'}
+            {toolMode === 'select' && '选择'}
           </div>
         </div>
-
+        
         {hoverInfo && (
-          <div className="px-3 py-2 rounded-md backdrop-blur-sm border" style={{
-            background: 'rgba(17, 24, 39, 0.85)',
-            borderColor: toolMode === 'break' ? '#ef4444' : '#4ade80'
-          }}>
-            <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-              {toolMode === 'break' ? '⛏️' : '🧱'} {hoverInfo.blockId}
+          <div className={`info-card hover-${toolMode}`}>
+            <div className="info-label">{toolMode === 'break' ? '目标' : '位置'}</div>
+            <div className="info-value mono">
+              {hoverInfo.blockId.split(':')[1]}
             </div>
-            <div className="text-[10px] font-mono" style={{ 
-              color: toolMode === 'break' ? '#ef4444' : '#4ade80' 
-            }}>
+            <div className="info-coords mono">
               ({hoverInfo.x}, {hoverInfo.y}, {hoverInfo.z})
             </div>
           </div>
         )}
       </div>
 
-      <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
-        <div className="px-3 py-1.5 rounded-md backdrop-blur-sm border text-[10px]" style={{
-          background: 'rgba(17, 24, 39, 0.85)',
-          borderColor: 'var(--color-border)',
-          color: 'var(--color-text-muted)'
-        }}>
-          方块数: <span style={{ color: 'var(--color-accent-green)' }}>{blockCount}</span>
-          {' | '}
-          左键放置/破坏 | 右键旋转 | 中键平移 | 滚轮缩放
-        </div>
-      </div>
-
-      <div className="absolute top-3 right-3 z-10 pointer-events-none">
-        <div className="flex flex-col gap-1 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-          <div className="px-2 py-1 rounded bg-black/50">X</div>
-          <div className="px-2 py-1 rounded bg-black/50">Y</div>
-          <div className="px-2 py-1 rounded bg-black/50">Z</div>
-        </div>
+      <div className="viewport-stats">
+        <span className="stat-item">
+          <span className="stat-value">{blockCount}</span>
+          <span className="stat-label">方块</span>
+        </span>
       </div>
     </div>
   )
