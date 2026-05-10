@@ -957,7 +957,7 @@ export function BlockBrowser() {
         )}
       </div>
 
-      <div className={`bp-grid ${viewMode}`} ref={gridRef} onMouseMove={handleMouseMovePreview}>
+      <div className={`bp-grid ${viewMode}`} ref={gridRef} onMouseMove={handleMouseMovePreview} role="listbox" aria-label="方块列表">
         {displayedBlocks.map((block, idx) => (
           <div
             key={block.id}
@@ -970,6 +970,10 @@ export function BlockBrowser() {
             draggable
             onDragStart={e => handleBlockDragStart(e, block)}
             onDragEnd={() => { setDraggedSlot(null); handleMouseLeavePreview() }}
+            role="option"
+            aria-selected={selectedBlock?.id === block.id || selectedBlocks.has(block.id)}
+            aria-label={`${block.nameZh}, ${block.id.replace('minecraft:', '')}`}
+            tabIndex={0}
           >
             <div className="bp-item-img">
               {getTexture(block)}
@@ -1649,9 +1653,18 @@ export function BlockBrowser() {
           border: 2px solid transparent;
           border-radius: 4px;
           cursor: pointer;
-          transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          animation: itemFadeIn 0.3s ease-out backwards;
         }
+        @keyframes itemFadeIn {
+          from { opacity: 0; transform: scale(0.9) translateY(8px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .bp-grid.grid .bp-item:nth-child(2n) { animation-delay: 0.02s; }
+        .bp-grid.grid .bp-item:nth-child(3n) { animation-delay: 0.04s; }
+        .bp-grid.grid .bp-item:nth-child(4n) { animation-delay: 0.06s; }
+        .bp-grid.grid .bp-item:nth-child(5n) { animation-delay: 0.08s; }
         .bp-grid.grid .bp-item { aspect-ratio: 1; }
         .bp-grid.list .bp-item {
           display: flex;
@@ -1663,19 +1676,25 @@ export function BlockBrowser() {
           border-color: var(--border-light);
           transform: scale(1.08);
           z-index: 5;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+        }
+        .bp-item:hover .bp-item-img {
+          filter: brightness(1.1);
         }
         .bp-item.selected {
           border-color: var(--accent);
-          box-shadow: 0 0 0 2px rgba(74, 143, 212, 0.25), 0 4px 12px rgba(0,0,0,0.4);
+          box-shadow: 0 0 0 2px rgba(74, 143, 212, 0.3), 0 8px 20px rgba(0,0,0,0.5);
+        }
+        .bp-item.selected .bp-item-img {
+          filter: brightness(1.15) saturate(1.2);
         }
         .bp-item.focused {
           outline: 2px solid var(--accent);
-          outline-offset: 1px;
-          box-shadow: 0 0 0 4px rgba(74, 143, 212, 0.15), 0 4px 12px rgba(0,0,0,0.4);
+          outline-offset: 2px;
+          box-shadow: 0 0 0 4px rgba(74, 143, 212, 0.2), 0 8px 20px rgba(0,0,0,0.5);
         }
         .bp-item:active { cursor: grabbing; }
-        .bp-item[draggable="true"]:active { opacity: 0.7; }
+        .bp-item[draggable="true"]:active { opacity: 0.7; transform: scale(1.15); }
 
         .bp-item-img {
           position: relative;
