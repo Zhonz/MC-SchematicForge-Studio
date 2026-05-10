@@ -32,5 +32,8 @@ yarn-error.log*
 *.sln
 *.sw?
 
+# TypeScript build info
+*.tsbuildinfo
+
 # Tauri (future)
 src-tauri/target/
