@@ -81,6 +81,7 @@ const CATEGORY_COUNTS = {
 }
 
 type ViewMode = 'grid' | 'list'
+type SortType = 'default' | 'name' | 'hardness' | 'category'
 type ActiveTab = 'recent' | 'pinned' | 'palette' | BlockCategory | 'all'
 
 const CategoryIcon = ({ type }: { type: string }) => {
@@ -116,6 +117,8 @@ export function BlockBrowser() {
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [hoveredBlock, setHoveredBlock] = useState<BlockData | null>(null)
+  const [sortType, setSortType] = useState<SortType>('default')
+  const [showSortMenu, setShowSortMenu] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -131,10 +134,30 @@ export function BlockBrowser() {
     return getBlocksByCategory(activeTab)
   }, [activeTab, searchQuery, recent, pinned, palette])
 
+  const sortedBlocks = useMemo(() => {
+    if (['recent', 'pinned', 'palette', 'all'].includes(activeTab) && !searchQuery.trim()) {
+      const blocks = activeTab === 'all' ? BLOCKS : filteredBlocks
+      switch (sortType) {
+        case 'name':
+          return [...blocks].sort((a, b) => a.nameZh.localeCompare(b.nameZh, 'zh-CN'))
+        case 'hardness':
+          return [...blocks].sort((a, b) => b.hardness - a.hardness)
+        case 'category':
+          return [...blocks].sort((a, b) => {
+            const catOrder: Record<string, number> = { building: 0, natural: 1, decoration: 2, redstone: 3, utility: 4 }
+            return (catOrder[a.category] || 99) - (catOrder[b.category] || 99)
+          })
+        default:
+          return blocks
+      }
+    }
+    return filteredBlocks
+  }, [filteredBlocks, sortType, activeTab, searchQuery])
+
   const displayedBlocks = useMemo(() => {
-    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeTab)) return filteredBlocks
-    return filteredBlocks.slice(0, (page + 1) * PAGE_SIZE)
-  }, [filteredBlocks, page, searchQuery, activeTab])
+    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeTab)) return sortedBlocks
+    return sortedBlocks.slice(0, (page + 1) * PAGE_SIZE)
+  }, [sortedBlocks, page, searchQuery, activeTab])
 
   const loadProgress = useMemo(() => {
     if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeTab)) return 100
@@ -146,7 +169,7 @@ export function BlockBrowser() {
     return filteredBlocks.length > displayedBlocks.length
   }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeTab])
 
-  useEffect(() => { setPage(0); focusIndexRef.current = -1 }, [activeTab, searchQuery])
+  useEffect(() => { setPage(0); focusIndexRef.current = -1 }, [activeTab, searchQuery, sortType])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -174,6 +197,12 @@ export function BlockBrowser() {
       if (e.key === '?') { e.preventDefault(); setShowHelp(h => !h); return }
       if (e.key === 'b' || e.key === 'B') { e.preventDefault(); searchInputRef.current?.focus(); return }
       if (e.key === 'v' || e.key === 'V') { setViewMode(v => v === 'grid' ? 'list' : 'grid'); return }
+      if (e.key === 'r' || e.key === 'R') {
+        const sortOrder: SortType[] = ['default', 'name', 'hardness', 'category']
+        const currentIdx = sortOrder.indexOf(sortType)
+        setSortType(sortOrder[(currentIdx + 1) % sortOrder.length])
+        return
+      }
       const num = parseInt(e.key)
       if (num >= 1 && num <= 9 && favorites[num - 1]) setSelectedBlock(favorites[num - 1])
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -239,6 +268,7 @@ export function BlockBrowser() {
         setPickerSearch('')
       }
       if (historyRef.current && !historyRef.current.contains(e.target as Node)) setShowHistory(false)
+      setShowSortMenu(false)
       setContextMenu({ show: false, x: 0, y: 0, block: null })
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -463,8 +493,34 @@ export function BlockBrowser() {
             </svg>
           </button>
           <button className="bp-icon-btn" onClick={() => setShowHelp(h => !h)} title="快捷键 (?)">?</button>
+          <button className="bp-icon-btn" onClick={() => setShowSortMenu(!showSortMenu)} title="排序" data-active={sortType !== 'default'}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
       </div>
+
+      {showSortMenu && (
+        <div className="bp-sort-menu">
+          <button className={sortType === 'default' ? 'active' : ''} onClick={() => { setSortType('default'); setShowSortMenu(false) }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1" fill="none" stroke="currentColor"/></svg>
+            默认排序
+          </button>
+          <button className={sortType === 'name' ? 'active' : ''} onClick={() => { setSortType('name'); setShowSortMenu(false) }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><text x="2" y="8" fontSize="7" fontWeight="bold">A</text></svg>
+            按名称排序
+          </button>
+          <button className={sortType === 'hardness' ? 'active' : ''} onClick={() => { setSortType('hardness'); setShowSortMenu(false) }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 8L5 2l3 6H2z"/></svg>
+            按硬度排序
+          </button>
+          <button className={sortType === 'category' ? 'active' : ''} onClick={() => { setSortType('category'); setShowSortMenu(false) }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="0.5" y="5.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="5.5" width="4" height="4" rx="0.5"/></svg>
+            按分类排序
+          </button>
+        </div>
+      )}
 
       {showHelp && (
         <div className="bp-help">
@@ -474,6 +530,7 @@ export function BlockBrowser() {
           <div className="bp-help-row"><kbd>↑</kbd><kbd>↓</kbd><span>导航方块</span></div>
           <div className="bp-help-row"><kbd>Home</kbd><kbd>End</kbd><span>首/末方块</span></div>
           <div className="bp-help-row"><kbd>V</kbd><span>切换视图</span></div>
+          <div className="bp-help-row"><kbd>R</kbd><span>切换排序</span></div>
           <div className="bp-help-row"><kbd>Del</kbd><span>移除快捷栏</span></div>
           <div className="bp-help-row"><kbd>Esc</kbd><span>关闭弹窗</span></div>
           <div className="bp-help-row"><kbd>双击</kbd><span>添加调色板</span></div>
@@ -614,7 +671,15 @@ export function BlockBrowser() {
             </>
           ) : tabLabel}
         </span>
-        <span className="bp-status-count">{filteredBlocks.length} 方块</span>
+        <span className="bp-status-count">{sortedBlocks.length} 方块</span>
+        {sortType !== 'default' && !searchQuery && (
+          <span className="bp-sort-badge">
+            <svg width="8" height="8" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            {sortType === 'name' ? '名称' : sortType === 'hardness' ? '硬度' : '分类'}
+          </span>
+        )}
         {hasMore && (
           <div className="bp-progress">
             <div className="bp-progress-bar" style={{ width: `${loadProgress}%` }} />
@@ -893,6 +958,40 @@ export function BlockBrowser() {
         }
         .bp-icon-btn:hover { background: var(--bg-3); color: var(--text-2); transform: translateY(-1px); }
         .bp-icon-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; box-shadow: 0 0 8px rgba(74, 143, 212, 0.3); }
+        .bp-icon-btn[data-active="true"] { color: var(--mc-gold); }
+
+        .bp-sort-menu {
+          position: absolute;
+          top: 100%;
+          right: 14px;
+          margin-top: 4px;
+          background: var(--mc-dark);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          z-index: 60;
+          overflow: hidden;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+          min-width: 140px;
+        }
+        .bp-sort-menu button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          padding: 8px 12px;
+          background: transparent;
+          border: none;
+          color: var(--text-1);
+          font-size: 11px;
+          cursor: pointer;
+          text-align: left;
+          font-family: inherit;
+          transition: background 0.1s;
+        }
+        .bp-sort-menu button:hover { background: var(--bg-3); }
+        .bp-sort-menu button.active { color: var(--accent); background: var(--accent-dim); }
+        .bp-sort-menu button svg { opacity: 0.6; }
+        .bp-sort-menu button.active svg { opacity: 1; }
 
         .bp-help {
           padding: 12px 14px;
@@ -1166,6 +1265,17 @@ export function BlockBrowser() {
           align-items: center;
         }
         .bp-status-count { font-size: 10px; color: var(--text-3); font-family: monospace; }
+        .bp-sort-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 9px;
+          padding: 2px 6px;
+          background: var(--accent-dim);
+          color: var(--text-2);
+          border-radius: 10px;
+          border: 1px solid var(--accent);
+        }
         .bp-progress {
           position: absolute;
           bottom: 0;
