@@ -1,0 +1,338 @@
+export interface StructureSpawner {
+  position: { x: number; y: number; z: number }
+  type: string
+  description: string
+  icon: string
+  count?: string
+}
+
+export interface StructureBlock {
+  pos: [number, number, number]
+  blockId: string
+}
+
+export interface MinecraftStructure {
+  id: string
+  name: string
+  nameZh: string
+  category: string
+  description: string
+  size: { x: number; y: number; z: number }
+  center: { x: number; y: number; z: number }
+  spawners: StructureSpawner[]
+  keyFeatures: string[]
+  tips: string[]
+}
+
+export const STRUCTURES: MinecraftStructure[] = [
+  {
+    id: 'ocean_monument',
+    name: 'Ocean Monument',
+    nameZh: '海底神殿',
+    category: 'ocean',
+    description: '海底深处的宏伟建筑，由海晶石构成，藏有黄金块',
+    size: { x: 58, y: 23, z: 58 },
+    center: { x: 29, y: 11, z: 29 },
+    spawners: [
+      {
+        position: { x: 29, y: 3, z: 29 },
+        type: 'elder_guardian',
+        description: '远古守卫者 × 3',
+        icon: '🐙',
+        count: '3',
+      },
+      {
+        position: { x: 15, y: 8, z: 15 },
+        type: 'guardian',
+        description: '守卫者刷新点',
+        icon: '👁️',
+      },
+      {
+        position: { x: 43, y: 8, z: 15 },
+        type: 'guardian',
+        description: '守卫者刷新点',
+        icon: '👁️',
+      },
+      {
+        position: { x: 15, y: 8, z: 43 },
+        type: 'guardian',
+        description: '守卫者刷新点',
+        icon: '👁️',
+      },
+      {
+        position: { x: 43, y: 8, z: 43 },
+        type: 'guardian',
+        description: '守卫者刷新点',
+        icon: '👁️',
+      },
+    ],
+    keyFeatures: ['黄金块核心', '海晶石墙壁', '海绵房间', '远古守卫者'],
+    tips: [
+      '核心房间在底部中央，有 8 块黄金块',
+      '击杀 3 只远古守卫者解除挖掘疲劳',
+      '海绵房间在顶层，用于收集海绵',
+      '建议从上方或侧面进入',
+    ],
+  },
+  {
+    id: 'nether_fortress',
+    name: 'Nether Fortress',
+    nameZh: '下界要塞',
+    category: 'nether',
+    description: '下界中的暗红色建筑群，是获取烈焰棒的唯一途径',
+    size: { x: 30, y: 20, z: 60 },
+    center: { x: 15, y: 10, z: 30 },
+    spawners: [
+      {
+        position: { x: 15, y: 12, z: 20 },
+        type: 'blaze',
+        description: '烈焰人刷怪笼 × 2-3',
+        icon: '🔥',
+        count: '2-3',
+      },
+      {
+        position: { x: 15, y: 12, z: 40 },
+        type: 'blaze',
+        description: '烈焰人刷怪笼 × 2-3',
+        icon: '🔥',
+        count: '2-3',
+      },
+      {
+        position: { x: 5, y: 8, z: 10 },
+        type: 'wither_skeleton',
+        description: '凋灵骷髅刷新区',
+        icon: '💀',
+      },
+      {
+        position: { x: 25, y: 8, z: 50 },
+        type: 'wither_skeleton',
+        description: '凋灵骷髅刷新区',
+        icon: '💀',
+      },
+    ],
+    keyFeatures: ['烈焰人刷怪笼', '下界疣房间', '桥梁走廊', '箱子里有烈焰棒'],
+    tips: [
+      '烈焰人刷怪笼通常位于桥梁交叉处',
+      '寻找下界疣房间来扩建农田',
+      '凋灵骷髅在走廊和桥上刷新',
+      '用床可以快速炸开墙壁',
+    ],
+  },
+  {
+    id: 'end_city',
+    name: 'End City',
+    nameZh: '末地城',
+    category: 'end',
+    description: '末路之地岛屿上的紫颂植物城市，藏有鞘翅',
+    size: { x: 40, y: 50, z: 40 },
+    center: { x: 20, y: 25, z: 20 },
+    spawners: [
+      {
+        position: { x: 20, y: 30, z: 20 },
+        type: 'shulker',
+        description: '潜影贝 × 5-10',
+        icon: '🐚',
+        count: '5-10',
+      },
+      {
+        position: { x: 20, y: 45, z: 20 },
+        type: 'elytra',
+        description: '鞘翅位置（末地船）',
+        icon: '🪽',
+      },
+    ],
+    keyFeatures: ['紫颂植物', '潜影贝', '末地船', '鞘翅'],
+    tips: [
+      '末地城顶部有末地船，藏有鞘翅',
+      '潜影贝的导弹效果会让你浮空',
+      '用方块垫脚到达顶部',
+      '带足紫颂果以防坠落',
+    ],
+  },
+  {
+    id: 'desert_temple',
+    name: 'Desert Temple',
+    nameZh: '沙漠神殿',
+    category: 'desert',
+    description: '沙漠中的砂岩金字塔，底部有陷阱和宝藏',
+    size: { x: 21, y: 13, z: 21 },
+    center: { x: 10, y: 4, z: 10 },
+    spawners: [],
+    keyFeatures: [' TNT 陷阱', '4 个宝箱', '蓝色陶瓦', '砂岩结构'],
+    tips: [
+      '中央地板下方有压力板和 TNT',
+      '不要踩中压力板！从侧面挖进去',
+      '4 个宝箱藏在陷阱室角落',
+      '掉落物有：钻石、金锭、绿宝石等',
+    ],
+  },
+  {
+    id: 'jungle_temple',
+    name: 'Jungle Temple',
+    nameZh: '丛林神庙',
+    category: 'jungle',
+    description: '丛林中的苔石神庙，有拉杆谜题和陷阱',
+    size: { x: 12, y: 10, z: 15 },
+    center: { x: 6, y: 4, z: 7 },
+    spawners: [],
+    keyFeatures: ['拉杆谜题', '绊线陷阱', '发射器', '隐藏宝箱室'],
+    tips: [
+      '拉杆谜题正确顺序：左→右→右→左',
+      '注意地上的绊线陷阱',
+      '宝箱室在右侧隐藏房间',
+      '掉落物有：钻石、金苹果、鞍等',
+    ],
+  },
+  {
+    id: 'woodland_mansion',
+    name: 'Woodland Mansion',
+    nameZh: '林地府邸',
+    category: 'forest',
+    description: '黑森林中的巨大深色橡木建筑，充满灾民',
+    size: { x: 77, y: 33, z: 57 },
+    center: { x: 38, y: 16, z: 28 },
+    spawners: [
+      {
+        position: { x: 20, y: 5, z: 20 },
+        type: 'evoker',
+        description: '唤魔者刷新区',
+        icon: '🧙',
+      },
+      {
+        position: { x: 56, y: 5, z: 40 },
+        type: 'vindicator',
+        description: '卫道士巡逻区',
+        icon: '⚔️',
+      },
+      {
+        position: { x: 38, y: 5, z: 10 },
+        type: 'vex',
+        description: '恼鬼生成区',
+        icon: '👻',
+      },
+    ],
+    keyFeatures: ['羊毛密室', '绿宝石块', '唤魔者', '卫道士'],
+    tips: [
+      '寻找藏有羊毛和绿宝石的密室',
+      '唤魔者会召唤恼鬼和尖牙攻击',
+      '地图探索者可以定位府邸',
+      '带足金苹果和附魔装备',
+    ],
+  },
+  {
+    id: 'pillager_outpost',
+    name: 'Pillager Outpost',
+    nameZh: '掠夺者前哨站',
+    category: 'plains',
+    description: '生成在村庄附近的掠夺者据点',
+    size: { x: 15, y: 18, z: 15 },
+    center: { x: 7, y: 8, z: 7 },
+    spawners: [
+      {
+        position: { x: 7, y: 15, z: 7 },
+        type: 'ravager',
+        description: '掠夺者队长 × 1',
+        icon: '🏴',
+      },
+      {
+        position: { x: 7, y: 2, z: 7 },
+        type: 'pillager',
+        description: '掠夺者巡逻区',
+        icon: '🔫',
+      },
+    ],
+    keyFeatures: ['顶层掠夺者', '铁栏杆笼子', '暗橡木结构'],
+    tips: [
+      '击杀队长获得不祥之兆',
+      '笼子中可能关押铁傀儡或村民',
+      '箱子有弩、箭和袭击旗帜',
+      '可以触发袭击事件获取奖励',
+    ],
+  },
+  {
+    id: 'stronghold',
+    name: 'Stronghold',
+    nameZh: '要塞',
+    category: 'underground',
+    description: '地下深处的石砖建筑群，通往末地传送门',
+    size: { x: 120, y: 30, z: 120 },
+    center: { x: 60, y: 15, z: 60 },
+    spawners: [
+      {
+        position: { x: 50, y: 10, z: 50 },
+        type: 'silverfish',
+        description: '蠹虫刷怪笼',
+        icon: '🐛',
+      },
+      {
+        position: { x: 60, y: 12, z: 60 },
+        type: 'end_portal',
+        description: '末地传送门位置',
+        icon: '🌀',
+      },
+    ],
+    keyFeatures: ['末地传送门', '蠹虫刷怪笼', '图书馆', '监狱'],
+    tips: [
+      '用末影之眼定位要塞',
+      '传送门房间有蠹虫刷怪笼',
+      '传送门已有 12 个眼，需补齐',
+      '图书馆有书架，适合收集',
+    ],
+  },
+  {
+    id: 'igloo',
+    name: 'Igloo',
+    nameZh: '雪屋',
+    category: 'snow',
+    description: '冰原上的小雪屋，地下室有僵尸村民',
+    size: { x: 7, y: 6, z: 7 },
+    center: { x: 3, y: 2, z: 3 },
+    spawners: [
+      {
+        position: { x: 3, y: 1, z: 3 },
+        type: 'zombie_villager',
+        description: '僵尸村民（地下室）',
+        icon: '🧟',
+      },
+    ],
+    keyFeatures: ['地下室', '僵尸村民', '工作台', '金苹果'],
+    tips: [
+      '地板下方有隐藏地下室',
+      '僵尸村民 + 虚弱药水 + 金苹果 = 治愈',
+      '治愈后有折扣交易',
+      '箱子有金苹果和虚弱药水',
+    ],
+  },
+  {
+    id: 'ancient_city',
+    name: 'Ancient City',
+    nameZh: '远古城市',
+    category: 'deep_dark',
+    description: '深暗之域的巨大城市，藏有迅捷潜行附魔书',
+    size: { x: 80, y: 30, z: 80 },
+    center: { x: 40, y: 15, z: 40 },
+    spawners: [
+      {
+        position: { x: 40, y: 10, z: 40 },
+        type: 'warden',
+        description: '循声守卫（警告！）',
+        icon: '👤',
+      },
+    ],
+    keyFeatures: ['幽匿块', '循声守卫', '迅捷潜行', '灵魂火'],
+    tips: [
+      '潜行通过避免惊动循声守卫',
+      '羊毛可以阻断声音传播',
+      '中央结构藏有珍贵战利品',
+      '迅捷潜行是独有附魔',
+    ],
+  },
+]
+
+export function getStructureById(id: string): MinecraftStructure | undefined {
+  return STRUCTURES.find(s => s.id === id)
+}
+
+export function getStructuresByCategory(category: string): MinecraftStructure[] {
+  return STRUCTURES.filter(s => s.category === category)
+}

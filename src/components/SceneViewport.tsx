@@ -1,6 +1,9 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import * as THREE from 'three'
 import { useSceneStore } from '@/stores/sceneStore'
+import { useStructureStore } from '@/stores/structureStore'
+import { STRUCTURES } from '@/data/minecraftStructures'
+import { StructureGhost } from '@/utils/StructureGhost'
 
 const BLOCK_SIZE = 1
 const COLORS: Record<string, string> = {
@@ -50,6 +53,7 @@ export function SceneViewport() {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const blockMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map())
+  const structureGhostsRef = useRef<Map<string, StructureGhost>>(new Map())
   const controlsRef = useRef({
     isRotating: false,
     isPanning: false,
@@ -58,6 +62,7 @@ export function SceneViewport() {
   const [blockCount, setBlockCount] = useState(0)
 
   const { placeBlock, breakBlock, toolMode, selectedBlock, getBlockKey } = useSceneStore()
+  const { activeStructures } = useStructureStore()
 
   const initScene = useCallback(() => {
     if (!containerRef.current) return
@@ -246,6 +251,44 @@ export function SceneViewport() {
     return initScene()
   }, [initScene])
 
+  // Update structure ghosts based on activeStructures
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene) return
+
+    // Remove old ghosts
+    structureGhostsRef.current.forEach((ghost, id) => {
+      if (!activeStructures.has(id)) {
+        scene.remove(ghost.getGroup())
+        ghost.dispose()
+        structureGhostsRef.current.delete(id)
+      }
+    })
+
+    // Add new ghosts
+    STRUCTURES.forEach(structure => {
+      if (activeStructures.has(structure.id) && !structureGhostsRef.current.has(structure.id)) {
+        const color = getCategoryColor(structure.category)
+        const ghost = new StructureGhost(structure.size, structure.center, color)
+        
+        // Add spawner markers
+        structure.spawners.forEach(spawner => {
+          ghost.addSpawnerMarker(
+            spawner.position,
+            spawner.icon,
+            spawner.description,
+            spawner.count
+          )
+        })
+
+        // Position at offset (bottom-left corner)
+        ghost.setOffset(-30, 0, -30)
+        scene.add(ghost.getGroup())
+        structureGhostsRef.current.set(structure.id, ghost)
+      }
+    })
+  }, [activeStructures])
+
   const updateBlocks = useCallback(() => {
     const { blocks } = useSceneStore.getState()
     const scene = sceneRef.current
@@ -327,4 +370,20 @@ export function SceneViewport() {
       </div>
     </div>
   )
+}
+
+function getCategoryColor(category: string): string {
+  const colors: Record<string, string> = {
+    ocean: '#4a90d9',
+    nether: '#b80000',
+    end: '#9b59b6',
+    desert: '#f59e0b',
+    jungle: '#5D8C3E',
+    forest: '#2d5016',
+    plains: '#7c3aed',
+    underground: '#808080',
+    snow: '#06b6d4',
+    deep_dark: '#1a1a2e',
+  }
+  return colors[category] || '#4a90d9'
 }

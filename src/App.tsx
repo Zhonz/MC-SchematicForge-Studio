@@ -4,9 +4,10 @@ import { Toolbar } from '@/components/Toolbar'
 import { StatusBar } from '@/components/StatusBar'
 import { SceneViewport } from '@/components/SceneViewport'
 import { WikiPanel } from '@/components/WikiPanel'
+import { StructurePanel } from '@/components/StructurePanel'
 import { useSceneStore } from '@/stores/sceneStore'
 
-type SidePanel = 'blocks' | 'wiki' | null
+type SidePanel = 'blocks' | 'wiki' | 'structures' | null
 
 export function App() {
   const { toolMode } = useSceneStore()
@@ -33,6 +34,7 @@ export function App() {
       
       <div className="flex-1 flex overflow-hidden">
         {leftPanel === 'blocks' && <BlockBrowser onWikiLookup={handleWikiLookup} />}
+        {leftPanel === 'structures' && <StructurePanel />}
         <SceneViewport />
         {rightPanel === 'wiki' && <WikiPanel initialQuery={wikiSearchQuery} />}
       </div>

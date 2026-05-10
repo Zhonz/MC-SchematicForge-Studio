@@ -1,6 +1,6 @@
 import { useSceneStore } from '@/stores/sceneStore'
 
-type SidePanel = 'blocks' | 'wiki' | null
+type SidePanel = 'blocks' | 'wiki' | 'structures' | null
 
 interface ToolbarProps {
   leftPanel: SidePanel
@@ -42,6 +42,20 @@ export function Toolbar({ leftPanel, rightPanel, onToggleLeft, onToggleRight }: 
         >
           <span>📦</span>
           <span>方块</span>
+        </button>
+
+        <button
+          onClick={() => onToggleLeft('structures')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+            leftPanel === 'structures' ? 'tool-active' : ''
+          }`}
+          style={{
+            color: leftPanel === 'structures' ? 'var(--color-accent-gold)' : 'var(--color-text-secondary)',
+            background: leftPanel === 'structures' ? undefined : 'var(--color-bg-primary)',
+          }}
+        >
+          <span>🏰</span>
+          <span>建筑</span>
         </button>
         
         <div className="flex items-center gap-1 px-1 py-0.5 rounded-md" style={{
