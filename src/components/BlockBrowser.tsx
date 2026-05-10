@@ -6,14 +6,16 @@ import type { BlockCategory, BlockData } from '@/types'
 
 const QUICK_SLOTS = 9
 const FAVORITES_KEY = 'sf_quickbar'
+const RECENT_KEY = 'sf_recent'
+const MAX_RECENT = 18
 
 const CATEGORIES = [
   { key: 'all', label: '全部' },
-  { key: 'building', label: '建筑方块' },
-  { key: 'natural', label: '自然方块' },
-  { key: 'redstone', label: '红石元件' },
-  { key: 'decoration', label: '装饰方块' },
-  { key: 'utility', label: '功能方块' },
+  { key: 'building', label: '建筑' },
+  { key: 'natural', label: '自然' },
+  { key: 'redstone', label: '红石' },
+  { key: 'decoration', label: '装饰' },
+  { key: 'utility', label: '功能' },
 ] as const
 
 function loadFavorites(): BlockData[] {
@@ -28,18 +30,48 @@ function loadFavorites(): BlockData[] {
   return BLOCKS.slice(0, QUICK_SLOTS)
 }
 
+function loadRecent(): BlockData[] {
+  try {
+    const saved = localStorage.getItem(RECENT_KEY)
+    if (saved) {
+      const ids = JSON.parse(saved) as string[]
+      return ids.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    }
+  } catch {}
+  return []
+}
+
+function saveRecent(recent: BlockData[]) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recent.map(b => b.id)))
+  } catch {}
+}
+
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
-  const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all'>('all')
+  const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [favorites, setFavorites] = useState<BlockData[]>(loadFavorites)
+  const [recent, setRecent] = useState<BlockData[]>(loadRecent)
   const [failedTextures, setFailedTextures] = useState<Set<string>>(new Set())
   const [showPicker, setShowPicker] = useState<number | null>(null)
+  const [pickerSearch, setPickerSearch] = useState('')
   const pickerRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return
+      if (e.target instanceof HTMLInputElement) {
+        if (e.key === 'Escape') {
+          (e.target as HTMLInputElement).blur()
+        }
+        return
+      }
+      if (e.key === '/') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        return
+      }
       const num = parseInt(e.key)
       if (num >= 1 && num <= 9 && favorites[num - 1]) {
         setSelectedBlock(favorites[num - 1])
@@ -50,9 +82,21 @@ export function BlockBrowser() {
   }, [favorites, setSelectedBlock])
 
   useEffect(() => {
+    if (selectedBlock) {
+      setRecent(prev => {
+        const filtered = prev.filter(b => b.id !== selectedBlock.id)
+        const newRecent = [selectedBlock, ...filtered].slice(0, MAX_RECENT)
+        saveRecent(newRecent)
+        return newRecent
+      })
+    }
+  }, [selectedBlock])
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
         setShowPicker(null)
+        setPickerSearch('')
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -61,9 +105,10 @@ export function BlockBrowser() {
 
   const filteredBlocks = useMemo(() => {
     if (searchQuery.trim()) return searchBlocks(searchQuery)
+    if (activeCategory === 'recent') return recent
     if (activeCategory === 'all') return BLOCKS
     return getBlocksByCategory(activeCategory)
-  }, [activeCategory, searchQuery])
+  }, [activeCategory, searchQuery, recent])
 
   const handleTextureError = useCallback((id: string) => {
     setFailedTextures(prev => new Set(prev).add(id))
@@ -74,6 +119,7 @@ export function BlockBrowser() {
   const handleSlotRightClick = (e: React.MouseEvent, idx: number) => {
     e.preventDefault()
     setShowPicker(showPicker === idx ? null : idx)
+    setPickerSearch('')
   }
 
   const handlePickBlock = (block: BlockData) => {
@@ -83,23 +129,32 @@ export function BlockBrowser() {
       setFavorites(newFavs)
       localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id)))
       setShowPicker(null)
+      setPickerSearch('')
     }
   }
 
   const handleAddToQuickbar = () => {
     if (!selectedBlock) return
     const existing = favorites.findIndex(f => f.id === selectedBlock.id)
-    if (existing >= 0) return
+    if (existing >= 0) {
+      setShowPicker(existing)
+      return
+    }
     const newFavs = [...favorites.slice(1), selectedBlock]
     setFavorites(newFavs)
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id)))
   }
 
+  const pickerBlocks = useMemo(() => {
+    if (pickerSearch.trim()) return searchBlocks(pickerSearch)
+    return BLOCKS.slice(0, 100)
+  }, [pickerSearch])
+
   return (
     <div className="mc-browser">
       <div className="mc-titlebar">
         <div className="mc-title">选择方块</div>
-        <div className="mc-title-count">{BLOCKS.length} 个方块</div>
+        <div className="mc-title-count">{BLOCKS.length}</div>
       </div>
 
       <div className="mc-hotbar-container">
@@ -107,18 +162,17 @@ export function BlockBrowser() {
         <div className="mc-hotbar">
           {favorites.map((block, idx) => {
             const isActive = selectedBlock?.id === block.id
-            const textureFailed = failedTextures.has(block.id)
             return (
               <div
                 key={block.id}
                 className={`mc-slot ${isActive ? 'active' : ''}`}
                 onClick={() => handleSlotClick(block)}
                 onContextMenu={(e) => handleSlotRightClick(e, idx)}
-                title={`${block.nameZh} [${idx + 1}]`}
+                title={block.nameZh}
               >
                 <span className="mc-slot-key">{idx + 1}</span>
                 <div className="mc-slot-inner">
-                  {!textureFailed && (
+                  {!failedTextures.has(block.id) ? (
                     <img
                       src={getMCTextureURL(block.id)}
                       alt=""
@@ -126,8 +180,9 @@ export function BlockBrowser() {
                       onError={() => handleTextureError(block.id)}
                       draggable={false}
                     />
+                  ) : (
+                    <div className="mc-slot-bg" style={{ backgroundColor: block.color }} />
                   )}
-                  <div className="mc-slot-bg" style={{ backgroundColor: block.color }} />
                 </div>
               </div>
             )
@@ -136,35 +191,41 @@ export function BlockBrowser() {
       </div>
 
       {showPicker !== null && (
-        <div className="mc-picker-overlay" onClick={() => setShowPicker(null)}>
+        <div className="mc-picker-overlay" onClick={() => { setShowPicker(null); setPickerSearch('') }}>
           <div className="mc-picker" ref={pickerRef} onClick={e => e.stopPropagation()}>
             <div className="mc-picker-title">
-              <span>替换槽位 {showPicker + 1}</span>
-              <button className="mc-picker-x" onClick={() => setShowPicker(null)}>×</button>
+              <span>替换 {showPicker + 1}</span>
+              <button className="mc-picker-x" onClick={() => { setShowPicker(null); setPickerSearch('') }}>×</button>
             </div>
             <div className="mc-picker-search">
               <input
                 type="text"
-                placeholder="输入搜索..."
-                value={searchQuery}
-                onChange={e => {}}
+                placeholder="搜索..."
+                value={pickerSearch}
+                onChange={e => setPickerSearch(e.target.value)}
                 autoFocus
               />
             </div>
             <div className="mc-picker-items">
-              {(searchQuery ? searchBlocks(searchQuery) : BLOCKS.slice(0, 80)).map(block => (
+              {pickerBlocks.map(block => (
                 <div
                   key={block.id}
                   className="mc-picker-item"
                   onClick={() => handlePickBlock(block)}
                 >
                   <div className="mc-picker-icon">
-                    <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
-                    <div style={{ backgroundColor: block.color }} />
+                    {!failedTextures.has(block.id) ? (
+                      <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
+                    ) : (
+                      <div style={{ backgroundColor: block.color }} />
+                    )}
                   </div>
                   <span>{block.nameZh}</span>
                 </div>
               ))}
+              {pickerBlocks.length === 0 && (
+                <div className="mc-picker-empty">无结果</div>
+              )}
             </div>
           </div>
         </div>
@@ -173,14 +234,23 @@ export function BlockBrowser() {
       <div className="mc-search">
         <span className="mc-search-icon">🔍</span>
         <input
+          ref={searchInputRef}
           type="text"
-          placeholder="搜索方块..."
+          placeholder="搜索方块... (按 / 聚焦)"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
         />
+        {searchQuery && (
+          <button className="mc-search-clear" onClick={() => setSearchQuery('')}>×</button>
+        )}
       </div>
 
       <div className="mc-tabs">
+        {activeCategory === 'recent' ? (
+          <button className="mc-tab active">最近</button>
+        ) : (
+          <button className="mc-tab" onClick={() => setActiveCategory('recent')}>最近 ({recent.length})</button>
+        )}
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
@@ -192,40 +262,62 @@ export function BlockBrowser() {
         ))}
       </div>
 
+      <div className="mc-grid-header">
+        {searchQuery ? (
+          <span>搜索: "{searchQuery}" ({filteredBlocks.length} 结果)</span>
+        ) : activeCategory === 'recent' ? (
+          <span>最近使用</span>
+        ) : activeCategory === 'all' ? (
+          <span>全部方块</span>
+        ) : (
+          <span>{CATEGORIES.find(c => c.key === activeCategory)?.label}</span>
+        )}
+      </div>
+
       <div className="mc-grid">
-        {filteredBlocks.slice(0, 120).map(block => (
+        {filteredBlocks.slice(0, 150).map(block => (
           <div
             key={block.id}
             className={`mc-item ${selectedBlock?.id === block.id ? 'selected' : ''}`}
             onClick={() => setSelectedBlock(block)}
-            title={block.nameZh}
+            title={`${block.nameZh}\n${block.id.replace('minecraft:', '')}\n硬度: ${block.hardness}`}
           >
             <div className="mc-item-inner">
-              {!failedTextures.has(block.id) && (
+              {!failedTextures.has(block.id) ? (
                 <img src={getMCTextureURL(block.id)} alt="" onError={() => handleTextureError(block.id)} />
+              ) : (
+                <div style={{ backgroundColor: block.color }} />
               )}
-              <div style={{ backgroundColor: failedTextures.has(block.id) ? block.color : 'transparent' }} />
             </div>
           </div>
         ))}
         {filteredBlocks.length === 0 && (
           <div className="mc-empty">未找到方块</div>
         )}
+        {filteredBlocks.length > 150 && (
+          <div className="mc-more">+{filteredBlocks.length - 150} 更多</div>
+        )}
       </div>
 
       {selectedBlock && (
         <div className="mc-footer">
           <div className="mc-footer-icon">
-            {!failedTextures.has(selectedBlock.id) && (
+            {!failedTextures.has(selectedBlock.id) ? (
               <img src={getMCTextureURL(selectedBlock.id)} alt="" onError={() => handleTextureError(selectedBlock.id)} />
+            ) : (
+              <div style={{ backgroundColor: selectedBlock.color }} />
             )}
-            <div style={{ backgroundColor: failedTextures.has(selectedBlock.id) ? selectedBlock.color : 'transparent' }} />
           </div>
           <div className="mc-footer-info">
             <div className="mc-footer-name">{selectedBlock.nameZh}</div>
-            <div className="mc-footer-id">{selectedBlock.id.replace('minecraft:', '')}</div>
+            <div className="mc-footer-meta">
+              <span className="mc-footer-id">{selectedBlock.id.replace('minecraft:', '')}</span>
+              <span className="mc-footer-hardness">硬度: {selectedBlock.hardness}</span>
+            </div>
           </div>
-          <button className="mc-star" onClick={handleAddToQuickbar} title="加入快捷栏">★</button>
+          <button className="mc-star" onClick={handleAddToQuickbar} title="加入快捷栏">
+            {favorites.some(f => f.id === selectedBlock.id) ? '✓' : '★'}
+          </button>
         </div>
       )}
 
@@ -258,6 +350,9 @@ export function BlockBrowser() {
         .mc-title-count {
           font-size: 11px;
           color: #888;
+          background: #2a2a2a;
+          padding: 2px 8px;
+          border-radius: 3px;
         }
 
         .mc-hotbar-container {
@@ -288,7 +383,6 @@ export function BlockBrowser() {
           border: 3px solid;
           border-color: #373737 #1a1a1a #1a1a1a #373737;
           cursor: pointer;
-          transition: filter 0.1s;
         }
 
         .mc-slot:hover {
@@ -362,6 +456,23 @@ export function BlockBrowser() {
           color: #666;
         }
 
+        .mc-search-clear {
+          width: 18px;
+          height: 18px;
+          background: #3a3a3a;
+          border: 1px solid #555;
+          color: #888;
+          cursor: pointer;
+          font-size: 12px;
+          line-height: 1;
+          padding: 0;
+        }
+
+        .mc-search-clear:hover {
+          background: #4a4a4a;
+          color: #fff;
+        }
+
         .mc-tabs {
           display: flex;
           gap: 2px;
@@ -389,6 +500,16 @@ export function BlockBrowser() {
           background: #4a698f;
           border-color: #6a8ab4 #38537a #38537a #6a8ab4;
           color: #fff;
+        }
+
+        .mc-grid-header {
+          padding: 4px 12px 6px;
+          font-size: 10px;
+          color: #666;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          background: #b8b8b8;
+          border-bottom: 1px solid #a0a0a0;
         }
 
         .mc-grid {
@@ -430,6 +551,7 @@ export function BlockBrowser() {
 
         .mc-item:hover {
           filter: brightness(1.15);
+          z-index: 1;
         }
 
         .mc-item.selected {
@@ -462,6 +584,16 @@ export function BlockBrowser() {
           padding: 16px;
           color: #555;
           font-size: 12px;
+        }
+
+        .mc-more {
+          grid-column: 1 / -1;
+          text-align: center;
+          padding: 6px;
+          background: #6a6a6a;
+          color: #ccc;
+          font-size: 10px;
+          border: 2px solid #555;
         }
 
         .mc-footer {
@@ -500,6 +632,7 @@ export function BlockBrowser() {
 
         .mc-footer-info {
           flex: 1;
+          min-width: 0;
         }
 
         .mc-footer-name {
@@ -507,28 +640,43 @@ export function BlockBrowser() {
           font-weight: bold;
           color: #fff;
           text-shadow: 1px 1px 0 #3f3f3f;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .mc-footer-meta {
+          display: flex;
+          gap: 8px;
+          margin-top: 2px;
         }
 
         .mc-footer-id {
           font-size: 10px;
           color: #888;
-          margin-top: 2px;
           font-family: monospace;
+        }
+
+        .mc-footer-hardness {
+          font-size: 10px;
+          color: #666;
         }
 
         .mc-star {
           width: 32px;
           height: 32px;
-          font-size: 16px;
+          font-size: 14px;
           background: #3b3b3b;
           border: 2px solid;
           border-color: #555 #2a2a2a #2a2a2a #555;
-          color: #ffd700;
+          color: #888;
           cursor: pointer;
+          flex-shrink: 0;
         }
 
         .mc-star:hover {
           background: #4a4a4a;
+          color: #ffd700;
         }
 
         .mc-picker-overlay {
@@ -573,6 +721,7 @@ export function BlockBrowser() {
           cursor: pointer;
           font-size: 14px;
           line-height: 1;
+          padding: 0;
         }
 
         .mc-picker-x:hover {
@@ -653,6 +802,13 @@ export function BlockBrowser() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .mc-picker-empty {
+          grid-column: 1 / -1;
+          text-align: center;
+          padding: 20px;
+          color: #555;
         }
       `}</style>
     </div>
