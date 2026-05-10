@@ -16,10 +16,10 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
     <header className="toolbar">
       <div className="toolbar-left">
         <div className="logo">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 2L18 6V14L10 18L2 14V6L10 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-            <path d="M10 2V18" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M2 6L10 9L18 6" stroke="currentColor" strokeWidth="1.5"/>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3L21 8V16L12 21L3 16V8L12 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+            <path d="M12 3V21" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M3 8L12 12L21 8" stroke="currentColor" strokeWidth="1.5"/>
           </svg>
           <span className="logo-text">SchematicForge</span>
         </div>
@@ -28,81 +28,83 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
       <div className="toolbar-center">
         <div className="file-actions">
           <button
-            className="file-btn"
+            className="toolbar-btn"
             onClick={loadScene}
-            data-tooltip="加载示意图"
+            data-tooltip="打开文件"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15V19C21 20 20 21 19 21H5C4 21 3 20 3 19V15M17 8L12 13L7 8M12 3V13"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
-            <span>打开</span>
           </button>
           <button
-            className="file-btn"
+            className="toolbar-btn"
             onClick={saveScene}
-            data-tooltip="保存示意图"
+            data-tooltip="保存文件"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15V7L17 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V15H16C14.9 15 14 14.1 14 13V5H19"/>
-              <path d="M9 11H15V5H9V11Z"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
             </svg>
-            <span>保存</span>
           </button>
           <button
-            className="file-btn btn-export"
+            className="toolbar-btn btn-accent"
             onClick={exportSchematic}
             data-tooltip="导出投影"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15V19C21 20 20 21 19 21H5C4 21 3 20 3 19V15M17 8L12 3L7 8M12 3V15"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
             <span>导出</span>
           </button>
         </div>
 
-        <div className="toolbar-divider"/>
+        <div className="toolbar-separator"/>
 
         <div className="tool-group">
           <button
             className={`tool-btn ${toolMode === 'place' ? 'active' : ''}`}
             onClick={() => setToolMode('place')}
-            data-tooltip="放置 (P)"
+            data-tooltip="放置模式 [P]"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5V19M5 12H19"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <span>放置</span>
           </button>
           <button
             className={`tool-btn ${toolMode === 'break' ? 'active' : ''}`}
             onClick={() => setToolMode('break')}
-            data-tooltip="破坏 (B)"
+            data-tooltip="破坏模式 [B]"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6H21M6 6V20C6 21 7 22 8 22H16C17 22 18 21 18 20V6M9 6V4C9 3 10 2 11 2H13C14 2 15 3 15 4V6"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18"/>
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
             </svg>
-            <span>破坏</span>
           </button>
           <button
             className={`tool-btn ${toolMode === 'select' ? 'active' : ''}`}
             onClick={() => setToolMode('select')}
-            data-tooltip="选择 (S)"
+            data-tooltip="选择模式 [S]"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 3L19 12L12 13L9 20L5 3Z"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+              <path d="M13 13l6 6"/>
             </svg>
-            <span>选择</span>
           </button>
         </div>
 
-        <div className="toolbar-divider"/>
+        <div className="toolbar-separator"/>
 
-        <div className="current-block">
+        <div className="current-block-display">
           <div 
-            className="block-preview"
+            className="block-swatch"
             style={{ backgroundColor: selectedBlock.color }}
           />
-          <div className="block-info">
+          <div className="block-details">
             <span className="block-name">{selectedBlock.nameZh}</span>
             <span className="block-id">{selectedBlock.id}</span>
           </div>
@@ -111,12 +113,15 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
 
       <div className="toolbar-right">
         <button 
-          className="tool-btn"
+          className="toolbar-btn"
           onClick={clearScene}
           data-tooltip="清空场景"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 6H21M19 6V20C19 21 18 22 17 22H7C6 22 5 21 5 20V6M8 6V4C8 3 9 2 10 2H14C15 2 16 3 16 4V6"/>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            <line x1="10" y1="11" x2="10" y2="17"/>
+            <line x1="14" y1="11" x2="14" y2="17"/>
           </svg>
         </button>
       </div>
@@ -127,26 +132,26 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
           align-items: center;
           justify-content: space-between;
           height: var(--toolbar-height);
-          padding: 0 12px;
-          background: var(--bg-dark);
+          padding: 0 var(--space-4);
+          background: var(--bg-elevation-1);
           border-bottom: 1px solid var(--border-subtle);
         }
 
         .toolbar-left {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: var(--space-6);
         }
 
         .logo {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: var(--space-3);
           color: var(--accent-primary);
         }
 
         .logo-text {
-          font-size: 13px;
+          font-size: 16px;
           font-weight: 600;
           letter-spacing: -0.3px;
           color: var(--text-primary);
@@ -155,140 +160,141 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
         .toolbar-center {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: var(--space-4);
         }
 
         .file-actions {
           display: flex;
-          gap: 2px;
-          padding: 3px;
-          background: var(--bg-darkest);
-          border-radius: var(--radius-md);
+          gap: var(--space-1);
+          padding: var(--space-1);
+          background: var(--bg-elevation-2);
+          border-radius: var(--radius-lg);
         }
 
-        .file-btn {
+        .toolbar-btn {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 6px;
-          min-width: 64px;
-          height: 28px;
-          padding: 0 10px;
+          gap: var(--space-2);
+          height: 36px;
+          padding: 0 var(--space-3);
           background: transparent;
           border: none;
-          border-radius: var(--radius-sm);
+          border-radius: var(--radius-md);
           color: var(--text-secondary);
           cursor: pointer;
-          transition: all 120ms var(--ease-out);
-          font-size: 12px;
+          transition: all var(--duration-fast) var(--ease-out);
+          font-size: 13px;
           font-weight: 500;
         }
 
-        .file-btn:hover {
-          background: var(--bg-hover);
+        .toolbar-btn:hover {
+          background: var(--bg-elevation-3);
           color: var(--text-primary);
         }
 
-        .file-btn:active {
+        .toolbar-btn:active {
+          background: var(--bg-elevation-4);
           transform: scale(0.98);
         }
 
-        .btn-export {
+        .btn-accent {
           background: var(--accent-primary);
-          color: #000;
+          color: #000000;
+          font-weight: 600;
+          padding: 0 var(--space-4);
         }
 
-        .btn-export:hover {
+        .btn-accent:hover {
           background: var(--accent-primary-dim);
           box-shadow: var(--shadow-glow);
+          color: #000000;
         }
 
         .tool-group {
           display: flex;
-          gap: 2px;
-          padding: 3px;
-          background: var(--bg-darkest);
-          border-radius: var(--radius-md);
+          gap: var(--space-1);
+          padding: var(--space-1);
+          background: var(--bg-elevation-2);
+          border-radius: var(--radius-lg);
         }
 
         .tool-btn {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 6px;
-          min-width: 56px;
-          height: 28px;
-          padding: 0 10px;
+          width: 40px;
+          height: 36px;
           background: transparent;
           border: none;
-          border-radius: var(--radius-sm);
+          border-radius: var(--radius-md);
           color: var(--text-secondary);
           cursor: pointer;
-          transition: all 120ms var(--ease-out);
-          font-size: 12px;
-          font-weight: 500;
+          transition: all var(--duration-fast) var(--ease-out);
         }
 
         .tool-btn:hover {
-          background: var(--bg-hover);
+          background: var(--bg-elevation-3);
           color: var(--text-primary);
         }
 
         .tool-btn:active {
-          transform: scale(0.98);
+          transform: scale(0.95);
         }
 
         .tool-btn.active {
-          background: var(--bg-active);
+          background: var(--bg-elevation-4);
           color: var(--accent-primary);
-          box-shadow: inset 0 0 0 1px var(--accent-primary);
+          box-shadow: var(--elevation-1);
         }
 
-        .toolbar-divider {
+        .toolbar-separator {
           width: 1px;
-          height: 20px;
-          background: var(--border-subtle);
+          height: 24px;
+          background: var(--border-medium);
         }
 
-        .current-block {
+        .current-block-display {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 4px 10px;
-          background: var(--bg-darkest);
-          border-radius: var(--radius-md);
+          gap: var(--space-3);
+          padding: var(--space-2) var(--space-4);
+          background: var(--bg-elevation-2);
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--border-subtle);
         }
 
-        .block-preview {
-          width: 20px;
-          height: 20px;
-          border-radius: 4px;
+        .block-swatch {
+          width: 24px;
+          height: 24px;
+          border-radius: var(--radius-md);
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
         }
 
-        .block-info {
+        .block-details {
           display: flex;
           flex-direction: column;
+          gap: 2px;
         }
 
         .block-name {
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 14px;
+          font-weight: 600;
           color: var(--text-primary);
           line-height: 1.2;
         }
 
         .block-id {
-          font-size: 10px;
+          font-size: 11px;
           font-family: var(--font-mono);
-          color: var(--text-muted);
+          color: var(--text-secondary);
           line-height: 1.2;
         }
 
         .toolbar-right {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: var(--space-2);
         }
       `}</style>
     </header>

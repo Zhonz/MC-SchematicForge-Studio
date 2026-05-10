@@ -6,14 +6,14 @@ export function StatusBar() {
   return (
     <footer className="statusbar">
       <div className="statusbar-left">
-        <div className="status-item">
+        <div className="status-group">
           <span className="status-label">工具</span>
-          <span className={`status-value ${toolMode}`}>
+          <span className={`status-value tool-${toolMode}`}>
             {toolMode === 'place' ? '放置' : toolMode === 'break' ? '破坏' : '选择'}
           </span>
         </div>
         <div className="statusbar-separator"/>
-        <div className="status-item">
+        <div className="status-group">
           <span className="status-label">方块</span>
           <span className="status-value">{blocks.size}</span>
         </div>
@@ -21,7 +21,7 @@ export function StatusBar() {
 
       <div className="statusbar-center">
         <span className="status-hint">
-          左键放置/破坏 · 右键旋转 · 中键平移 · 滚轮缩放
+          <kbd>LMB</kbd> 放置/破坏 · <kbd>RMB</kbd> 旋转 · <kbd>MMB</kbd> 平移 · <kbd>滚轮</kbd> 缩放
         </span>
       </div>
 
@@ -35,17 +35,17 @@ export function StatusBar() {
           align-items: center;
           justify-content: space-between;
           height: var(--statusbar-height);
-          padding: 0 12px;
-          background: var(--bg-dark);
+          padding: 0 var(--space-4);
+          background: var(--bg-elevation-1);
           border-top: 1px solid var(--border-subtle);
-          font-size: 11px;
+          font-size: 12px;
         }
 
         .statusbar-left,
         .statusbar-right {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: var(--space-3);
         }
 
         .statusbar-center {
@@ -54,14 +54,14 @@ export function StatusBar() {
           transform: translateX(-50%);
         }
 
-        .status-item {
+        .status-group {
           display: flex;
           align-items: center;
-          gap: 4px;
+          gap: var(--space-2);
         }
 
         .status-label {
-          color: var(--text-muted);
+          color: var(--text-hint);
         }
 
         .status-value {
@@ -69,30 +69,44 @@ export function StatusBar() {
           font-weight: 500;
         }
 
-        .status-value.place {
+        .status-value.tool-place {
           color: var(--accent-success);
         }
 
-        .status-value.break {
+        .status-value.tool-break {
           color: var(--accent-danger);
         }
 
-        .status-value.select {
+        .status-value.tool-select {
           color: var(--accent-primary);
         }
 
         .statusbar-separator {
           width: 1px;
-          height: 12px;
-          background: var(--border-subtle);
+          height: 14px;
+          background: var(--border-medium);
         }
 
         .status-hint {
-          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+          color: var(--text-hint);
+        }
+
+        .status-hint kbd {
+          padding: 2px 6px;
+          background: var(--bg-elevation-2);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-sm);
+          font-family: var(--font-mono);
+          font-size: 11px;
+          color: var(--text-secondary);
         }
 
         .status-version {
           color: var(--text-disabled);
+          font-size: 11px;
         }
       `}</style>
     </footer>
