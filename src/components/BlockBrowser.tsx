@@ -8,7 +8,9 @@ const QUICK_SLOTS = 9
 const FAVORITES_KEY = 'sf_quickbar'
 const RECENT_KEY = 'sf_recent'
 const PINNED_KEY = 'sf_pinned'
-const MAX_RECENT = 12
+const PALETTE_KEY = 'sf_palette'
+const MAX_RECENT = 18
+const MAX_PALETTE = 12
 const PAGE_SIZE = 48
 
 const CATEGORIES = [
@@ -51,6 +53,14 @@ function loadPinned(): string[] {
   return []
 }
 
+function loadPalette(): string[] {
+  try {
+    const saved = localStorage.getItem(PALETTE_KEY)
+    if (saved) return JSON.parse(saved) as string[]
+  } catch {}
+  return BLOCKS.slice(0, MAX_PALETTE).map(b => b.id)
+}
+
 interface ContextMenuState {
   show: boolean
   x: number
@@ -58,46 +68,47 @@ interface ContextMenuState {
   block: BlockData | null
 }
 
-interface TooltipState {
-  show: boolean
-  x: number
-  y: number
-  block: BlockData | null
+interface DragState {
+  fromIndex: number | null
+  toIndex: number | null
 }
 
 export function BlockBrowser() {
   const { selectedBlock, setSelectedBlock } = useSceneStore()
-  const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent' | 'pinned'>('all')
+  const [activeCategory, setActiveCategory] = useState<BlockCategory | 'all' | 'recent' | 'pinned' | 'palette'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [favorites, setFavorites] = useState<BlockData[]>(loadFavorites)
   const [recent, setRecent] = useState<BlockData[]>(loadRecent)
   const [pinned, setPinned] = useState<string[]>(loadPinned)
+  const [palette, setPalette] = useState<string[]>(loadPalette)
   const [failedTextures, setFailedTextures] = useState<Set<string>>(new Set())
   const [showPicker, setShowPicker] = useState<number | null>(null)
   const [pickerSearch, setPickerSearch] = useState('')
   const [page, setPage] = useState(0)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ show: false, x: 0, y: 0, block: null })
-  const [tooltip, setTooltip] = useState<TooltipState>({ show: false, x: 0, y: 0, block: null })
+  const [showHelp, setShowHelp] = useState(false)
+  const [drag, setDrag] = useState<DragState>({ fromIndex: null, toIndex: null })
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
-  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const quickbarRef = useRef<HTMLDivElement>(null)
 
   const filteredBlocks = useMemo(() => {
     if (searchQuery.trim()) return searchBlocks(searchQuery)
     if (activeCategory === 'recent') return recent
     if (activeCategory === 'pinned') return pinned.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    if (activeCategory === 'palette') return palette.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
     if (activeCategory === 'all') return BLOCKS
     return getBlocksByCategory(activeCategory)
-  }, [activeCategory, searchQuery, recent, pinned])
+  }, [activeCategory, searchQuery, recent, pinned, palette])
 
   const displayedBlocks = useMemo(() => {
-    if (searchQuery.trim() || activeCategory === 'recent' || activeCategory === 'pinned') return filteredBlocks
+    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeCategory)) return filteredBlocks
     return filteredBlocks.slice(0, (page + 1) * PAGE_SIZE)
   }, [filteredBlocks, page, searchQuery, activeCategory])
 
   const hasMore = useMemo(() => {
-    if (searchQuery.trim() || activeCategory === 'recent' || activeCategory === 'pinned') return false
+    if (searchQuery.trim() || ['recent', 'pinned', 'palette'].includes(activeCategory)) return false
     return filteredBlocks.length > displayedBlocks.length
   }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeCategory])
 
@@ -117,12 +128,18 @@ export function BlockBrowser() {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) {
-        if (e.key === 'Escape') { (e.target as HTMLInputElement).blur(); setContextMenu({ show: false, x: 0, y: 0, block: null }) }
+        if (e.key === 'Escape') {
+          (e.target as HTMLInputElement).blur()
+          setContextMenu({ show: false, x: 0, y: 0, block: null })
+          setShowPicker(null)
+        }
         return
       }
       if (e.key === '/') { e.preventDefault(); searchInputRef.current?.focus(); return }
+      if (e.key === '?') { e.preventDefault(); setShowHelp(h => !h); return }
       const num = parseInt(e.key)
       if (num >= 1 && num <= 9 && favorites[num - 1]) setSelectedBlock(favorites[num - 1])
+      if (e.key === 'b' || e.key === 'B') { e.preventDefault(); searchInputRef.current?.focus(); return }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -162,19 +179,8 @@ export function BlockBrowser() {
     setContextMenu({ show: true, x: e.clientX, y: e.clientY, block })
   }
 
-  const handleBlockHover = (e: React.MouseEvent, block: BlockData) => {
-    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current)
-    tooltipTimerRef.current = setTimeout(() => {
-      setTooltip({ show: true, x: e.clientX, y: e.clientY, block })
-    }, 500)
-  }
-
-  const handleBlockLeave = () => {
-    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current)
-    setTooltip({ show: false, x: 0, y: 0, block: null })
-  }
-
   const handleSlotClick = (block: BlockData) => setSelectedBlock(block)
+
   const handleSlotRightClick = (e: React.MouseEvent, idx: number) => {
     e.preventDefault()
     setShowPicker(showPicker === idx ? null : idx)
@@ -216,6 +222,45 @@ export function BlockBrowser() {
     }
   }
 
+  const handleAddToPalette = (block?: BlockData) => {
+    const target = block || selectedBlock
+    if (!target) return
+    if (!palette.includes(target.id)) {
+      const newPalette = [target.id, ...palette].slice(0, MAX_PALETTE)
+      setPalette(newPalette)
+      try { localStorage.setItem(PALETTE_KEY, JSON.stringify(newPalette)) } catch {}
+    }
+  }
+
+  const handleRemoveFromPalette = (id: string) => {
+    const newPalette = palette.filter(p => p !== id)
+    setPalette(newPalette)
+    try { localStorage.setItem(PALETTE_KEY, JSON.stringify(newPalette)) } catch {}
+  }
+
+  const handleQuickbarDragStart = (e: React.DragEvent, idx: number) => {
+    setDrag({ fromIndex: idx, toIndex: null })
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleQuickbarDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    if (drag.fromIndex !== null && drag.fromIndex !== idx) {
+      setDrag({ ...drag, toIndex: idx })
+    }
+  }
+
+  const handleQuickbarDragEnd = () => {
+    if (drag.fromIndex !== null && drag.toIndex !== null && drag.fromIndex !== drag.toIndex) {
+      const newFavs = [...favorites]
+      const [removed] = newFavs.splice(drag.fromIndex, 1)
+      newFavs.splice(drag.toIndex, 0, removed)
+      setFavorites(newFavs)
+      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+    }
+    setDrag({ fromIndex: null, toIndex: null })
+  }
+
   const pickerBlocks = useMemo(() => {
     if (pickerSearch.trim()) return searchBlocks(pickerSearch).slice(0, 80)
     return BLOCKS.slice(0, 80)
@@ -223,7 +268,12 @@ export function BlockBrowser() {
 
   const isPinned = (id: string) => pinned.includes(id)
   const isInQuickbar = (id: string) => favorites.some(f => f.id === id)
-  const categoryLabel = activeCategory === 'recent' ? '最近' : activeCategory === 'pinned' ? '收藏' : CATEGORIES.find(c => c.key === activeCategory)?.label || ''
+  const isInPalette = (id: string) => palette.includes(id)
+
+  const categoryLabel = activeCategory === 'recent' ? '最近' : 
+    activeCategory === 'pinned' ? '收藏' : 
+    activeCategory === 'palette' ? '调色板' : 
+    CATEGORIES.find(c => c.key === activeCategory)?.label || ''
 
   const contextBlock = contextMenu.block
 
@@ -235,12 +285,64 @@ export function BlockBrowser() {
           <span className="be-title-text">方块选择</span>
         </div>
         <div className="be-toolbar-right">
+          <button className="be-help-btn" onClick={() => setShowHelp(h => !h)} title="快捷键 (?)">?</button>
           <span className="be-block-count">{BLOCKS.length}</span>
         </div>
       </div>
 
+      {showHelp && (
+        <div className="be-help-panel">
+          <div className="be-help-title">快捷键</div>
+          <div className="be-help-grid">
+            <span><kbd>1-9</kbd></span><span>快捷栏</span>
+            <span><kbd>/</kbd> 或 <kbd>B</kbd></span><span>搜索</span>
+            <span><kbd>Esc</kbd></span><span>关闭</span>
+            <span><kbd>?</kbd></span><span>帮助</span>
+            <span><kbd>右键</kbd></span><span>菜单</span>
+          </div>
+        </div>
+      )}
+
+      <div className="be-palette-section">
+        <div className="be-section-header">
+          <span>调色板</span>
+          <span className="be-hint">拖拽排序</span>
+        </div>
+        <div className="be-palette" ref={quickbarRef}>
+          {palette.slice(0, MAX_PALETTE).map((id, idx) => {
+            const block = BLOCKS.find(b => b.id === id)
+            if (!block) return null
+            const isActive = selectedBlock?.id === block.id
+            return (
+              <div
+                key={id}
+                className={`be-palette-slot ${isActive ? 'active' : ''} ${drag.toIndex === idx ? 'drag-over' : ''}`}
+                draggable
+                onDragStart={(e) => handleQuickbarDragStart(e, idx)}
+                onDragOver={(e) => handleQuickbarDragOver(e, idx)}
+                onDragEnd={handleQuickbarDragEnd}
+                onClick={() => handleBlockClick(block)}
+                onContextMenu={(e) => handleBlockRightClick(e, block)}
+                title={block.nameZh}
+              >
+                <div className="be-palette-inner">
+                  {!failedTextures.has(id) ? (
+                    <img src={getMCTextureURL(id)} alt="" onError={() => handleTextureError(id)} />
+                  ) : (
+                    <div style={{ backgroundColor: block.color }} />
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {palette.length === 0 && (
+            <div className="be-palette-empty">右键添加方块到调色板</div>
+          )}
+        </div>
+      </div>
+
       <div className="be-hotbar-section">
-        <div className="be-hotbar-header">
+        <div className="be-section-header">
           <span>快捷栏</span>
           <span className="be-hint">1-9</span>
         </div>
@@ -251,11 +353,13 @@ export function BlockBrowser() {
               <div
                 key={block.id}
                 className={`be-slot ${isActive ? 'active' : ''}`}
+                draggable
+                onDragStart={(e) => handleQuickbarDragStart(e, idx)}
+                onDragOver={(e) => handleQuickbarDragOver(e, idx)}
+                onDragEnd={handleQuickbarDragEnd}
                 onClick={() => handleSlotClick(block)}
                 onContextMenu={(e) => handleSlotRightClick(e, idx)}
-                onMouseEnter={(e) => handleBlockHover(e, block)}
-                onMouseLeave={handleBlockLeave}
-                title={`${block.nameZh}\n右键替换`}
+                title={block.nameZh}
               >
                 <span className="be-slot-num">{idx + 1}</span>
                 <div className="be-slot-inner">
@@ -308,11 +412,7 @@ export function BlockBrowser() {
       )}
 
       {contextMenu.show && contextBlock && (
-        <div
-          className="be-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="be-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(e) => e.stopPropagation()}>
           <div className="be-context-header">
             <div className="be-context-icon">
               {!failedTextures.has(contextBlock.id) ? (
@@ -332,38 +432,23 @@ export function BlockBrowser() {
             <span className="be-context-shortcut">点击</span>
           </button>
           <button className="be-context-item" onClick={() => { handleAddToQuickbar(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
-            <span>{isInQuickbar(contextBlock.id) ? '已加入快捷栏' : '加入快捷栏'}</span>
+            <span>{isInQuickbar(contextBlock.id) ? '已在快捷栏' : '加入快捷栏'}</span>
             {isInQuickbar(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
           </button>
+          <button className="be-context-item" onClick={() => { handleAddToPalette(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+            <span>{isInPalette(contextBlock.id) ? '已在调色板' : '加入调色板'}</span>
+            {isInPalette(contextBlock.id) ? <span className="be-context-check">✓</span> : null}
+          </button>
+          {isInPalette(contextBlock.id) && (
+            <button className="be-context-item" onClick={() => { handleRemoveFromPalette(contextBlock.id); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
+              <span>从调色板移除</span>
+            </button>
+          )}
+          <div className="be-context-divider" />
           <button className="be-context-item" onClick={() => { handleTogglePin(contextBlock); setContextMenu({ show: false, x: 0, y: 0, block: null }) }}>
             <span>{isPinned(contextBlock.id) ? '取消收藏' : '添加收藏'}</span>
             {isPinned(contextBlock.id) ? <span className="be-context-check">📌</span> : <span>☆</span>}
           </button>
-        </div>
-      )}
-
-      {tooltip.show && tooltip.block && !contextMenu.show && (
-        <div
-          className="be-tooltip"
-          style={{ left: (tooltip.x || 0) + 12, top: (tooltip.y || 0) + 12 }}
-        >
-          <div className="be-tooltip-header">
-            <div className="be-tooltip-icon">
-              {!failedTextures.has(tooltip.block?.id || '') ? (
-                <img src={getMCTextureURL(tooltip.block?.id || '')} alt="" onError={() => handleTextureError(tooltip.block?.id || '')} />
-              ) : (
-                <div style={{ backgroundColor: tooltip.block?.color || '#888' }} />
-              )}
-            </div>
-            <div>
-              <div className="be-tooltip-name">{tooltip.block?.nameZh}</div>
-              <div className="be-tooltip-id">{tooltip.block?.id.replace('minecraft:', '')}</div>
-            </div>
-          </div>
-          <div className="be-tooltip-meta">
-            <span>硬度: {tooltip.block?.hardness}</span>
-            <span>{tooltip.block?.transparent ? '透明' : '不透明'}</span>
-          </div>
         </div>
       )}
 
@@ -373,31 +458,20 @@ export function BlockBrowser() {
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="搜索方块... (按 / )"
+            placeholder="搜索方块... (按 / 或 B)"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
-          {searchQuery && (
-            <button className="be-search-clear" onClick={() => setSearchQuery('')}>×</button>
-          )}
+          {searchQuery && <button className="be-search-clear" onClick={() => setSearchQuery('')}>×</button>}
         </div>
       </div>
 
       <div className="be-tabs">
-        <button className={`be-tab ${activeCategory === 'recent' ? 'active' : ''}`} onClick={() => setActiveCategory('recent')}>
-          最近 ({recent.length})
-        </button>
-        <button className={`be-tab ${activeCategory === 'pinned' ? 'active' : ''}`} onClick={() => setActiveCategory('pinned')}>
-          收藏 ({pinned.length})
-        </button>
+        <button className={`be-tab ${activeCategory === 'recent' ? 'active' : ''}`} onClick={() => setActiveCategory('recent')}>最近 ({recent.length})</button>
+        <button className={`be-tab ${activeCategory === 'pinned' ? 'active' : ''}`} onClick={() => setActiveCategory('pinned')}>收藏 ({pinned.length})</button>
+        <button className={`be-tab ${activeCategory === 'palette' ? 'active' : ''}`} onClick={() => setActiveCategory('palette')}>调色板 ({palette.length})</button>
         {CATEGORIES.map(cat => (
-          <button
-            key={cat.key}
-            className={`be-tab ${activeCategory === cat.key ? 'active' : ''}`}
-            onClick={() => setActiveCategory(cat.key)}
-          >
-            {cat.label}
-          </button>
+          <button key={cat.key} className={`be-tab ${activeCategory === cat.key ? 'active' : ''}`} onClick={() => setActiveCategory(cat.key)}>{cat.label}</button>
         ))}
       </div>
 
@@ -413,8 +487,6 @@ export function BlockBrowser() {
               className={`be-block ${selectedBlock?.id === block.id ? 'selected' : ''}`}
               onClick={() => handleBlockClick(block)}
               onContextMenu={(e) => handleBlockRightClick(e, block)}
-              onMouseEnter={(e) => handleBlockHover(e, block)}
-              onMouseLeave={handleBlockLeave}
             >
               <div className="be-block-inner">
                 {!failedTextures.has(block.id) ? (
@@ -446,23 +518,16 @@ export function BlockBrowser() {
           </div>
           <div className="be-status-info">
             <span className="be-status-name">{selectedBlock.nameZh}</span>
-            <span className="be-status-meta">
-              {selectedBlock.id.replace('minecraft:', '')} | 硬度 {selectedBlock.hardness}
-            </span>
+            <span className="be-status-meta">{selectedBlock.id.replace('minecraft:', '')} | 硬度 {selectedBlock.hardness}</span>
           </div>
           <div className="be-status-actions">
-            <button
-              className={`be-action ${isPinned(selectedBlock.id) ? 'pinned' : ''}`}
-              onClick={() => handleTogglePin()}
-              title={isPinned(selectedBlock.id) ? '取消收藏' : '收藏'}
-            >
+            <button className={`be-action ${isPinned(selectedBlock.id) ? 'pinned' : ''}`} onClick={() => handleTogglePin()} title={isPinned(selectedBlock.id) ? '取消收藏' : '收藏'}>
               {isPinned(selectedBlock.id) ? '📌' : '☆'}
             </button>
-            <button
-              className={`be-action ${isInQuickbar(selectedBlock.id) ? 'inbar' : ''}`}
-              onClick={() => handleAddToQuickbar()}
-              title={isInQuickbar(selectedBlock.id) ? '已在快捷栏' : '加入快捷栏'}
-            >
+            <button className={`be-action ${isInPalette(selectedBlock.id) ? 'inbar' : ''}`} onClick={() => handleAddToPalette()} title={isInPalette(selectedBlock.id) ? '已在调色板' : '加入调色板'}>
+              🎨
+            </button>
+            <button className={`be-action ${isInQuickbar(selectedBlock.id) ? 'inbar' : ''}`} onClick={() => handleAddToQuickbar()} title={isInQuickbar(selectedBlock.id) ? '已在快捷栏' : '加入快捷栏'}>
               {isInQuickbar(selectedBlock.id) ? '✓' : '+'}
             </button>
           </div>
@@ -489,38 +554,63 @@ export function BlockBrowser() {
           border-bottom: 2px solid #1a1a1a;
         }
 
-        .be-title {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-
+        .be-title { display: flex; align-items: center; gap: 6px; }
         .be-title-icon { font-size: 14px; }
-
-        .be-title-text {
-          font-size: 13px;
-          font-weight: bold;
-          color: #fff;
-          text-shadow: 1px 1px 0 #1a1a1a;
-        }
-
+        .be-title-text { font-size: 13px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #1a1a1a; }
         .be-toolbar-right { display: flex; align-items: center; gap: 8px; }
+        .be-block-count { font-size: 10px; color: #999; background: #1a1a1a; padding: 2px 6px; border-radius: 2px; }
 
-        .be-block-count {
-          font-size: 10px;
-          color: #999;
-          background: #1a1a1a;
-          padding: 2px 6px;
-          border-radius: 2px;
+        .be-help-btn {
+          width: 20px;
+          height: 20px;
+          background: #3a3a3a;
+          border: 1px solid #555;
+          color: #888;
+          cursor: pointer;
+          font-size: 11px;
+          font-weight: bold;
         }
 
-        .be-hotbar-section {
+        .be-help-btn:hover { background: #4a4a4a; color: #fff; }
+
+        .be-help-panel {
+          padding: 8px 12px;
+          background: #2a2a2a;
+          border-bottom: 2px solid #1a1a1a;
+        }
+
+        .be-help-title {
+          font-size: 11px;
+          color: #888;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .be-help-grid {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 4px 12px;
+          font-size: 11px;
+          color: #aaa;
+        }
+
+        .be-help-grid kbd {
+          background: #3a3a3a;
+          border: 1px solid #555;
+          padding: 1px 5px;
+          border-radius: 3px;
+          font-family: inherit;
+          font-size: 10px;
+        }
+
+        .be-palette-section {
           padding: 8px 10px;
           background: #1a1a1a;
           border-bottom: 2px solid #333;
         }
 
-        .be-hotbar-header {
+        .be-section-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -533,11 +623,42 @@ export function BlockBrowser() {
 
         .be-hint { color: #5c9bd4; font-size: 9px; }
 
-        .be-hotbar {
+        .be-palette {
           display: flex;
-          gap: 2px;
+          gap: 3px;
           justify-content: center;
+          flex-wrap: wrap;
         }
+
+        .be-palette-slot {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          background: #2d2d2d;
+          border: 2px solid;
+          border-color: #404040 #1a1a1a #1a1a1a #404040;
+          cursor: pointer;
+        }
+
+        .be-palette-slot:hover { filter: brightness(1.15); }
+        .be-palette-slot.active { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
+        .be-palette-slot.drag-over { border-color: #ffd700; border-style: dashed; }
+
+        .be-palette-inner { position: absolute; inset: 0; }
+        .be-palette-inner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
+        .be-palette-inner div { position: absolute; inset: 0; }
+
+        .be-palette-empty {
+          width: 100%;
+          text-align: center;
+          font-size: 10px;
+          color: #555;
+          padding: 8px;
+        }
+
+        .be-hotbar-section { padding: 8px 10px; background: #1a1a1a; border-bottom: 2px solid #333; }
+
+        .be-hotbar { display: flex; gap: 2px; justify-content: center; }
 
         .be-slot {
           position: relative;
@@ -546,12 +667,12 @@ export function BlockBrowser() {
           background: #2d2d2d;
           border: 2px solid;
           border-color: #404040 #1a1a1a #1a1a1a #404040;
-          cursor: pointer;
+          cursor: grab;
         }
 
         .be-slot:hover { filter: brightness(1.15); }
-
         .be-slot.active { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
+        .be-slot:active { cursor: grabbing; }
 
         .be-slot-num {
           position: absolute;
@@ -565,33 +686,12 @@ export function BlockBrowser() {
           pointer-events: none;
         }
 
-        .be-slot-pin {
-          position: absolute;
-          top: 0;
-          right: 0;
-          font-size: 8px;
-          z-index: 2;
-        }
-
+        .be-slot-pin { position: absolute; top: 0; right: 0; font-size: 8px; z-index: 2; }
         .be-slot-inner { position: absolute; inset: 0; }
-
-        .be-slot-inner img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
-        }
-
+        .be-slot-inner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
         .be-slot-inner div { position: absolute; inset: 0; }
 
-        .be-search-section {
-          padding: 8px 10px;
-          background: #b8b8b8;
-          border-bottom: 1px solid #9a9a9a;
-        }
+        .be-search-section { padding: 8px 10px; background: #b8b8b8; border-bottom: 1px solid #9a9a9a; }
 
         .be-search {
           display: flex;
@@ -604,19 +704,8 @@ export function BlockBrowser() {
         }
 
         .be-search-icon { font-size: 12px; opacity: 0.5; }
-
-        .be-search input {
-          flex: 1;
-          background: transparent;
-          border: none;
-          outline: none;
-          color: #000;
-          font-size: 12px;
-          font-family: inherit;
-        }
-
+        .be-search input { flex: 1; background: transparent; border: none; outline: none; color: #000; font-size: 12px; font-family: inherit; }
         .be-search input::placeholder { color: #888; }
-
         .be-search-clear {
           width: 16px;
           height: 16px;
@@ -628,7 +717,6 @@ export function BlockBrowser() {
           line-height: 1;
           padding: 0;
         }
-
         .be-search-clear:hover { background: #e0e0e0; }
 
         .be-tabs {
@@ -653,26 +741,10 @@ export function BlockBrowser() {
         }
 
         .be-tab:hover { background: #5a5a5a; }
+        .be-tab.active { background: #4a698f; border-color: #6a8ab4 #38537a #38537a #6a8ab4; }
 
-        .be-tab.active {
-          background: #4a698f;
-          border-color: #6a8ab4 #38537a #38537a #6a8ab4;
-        }
-
-        .be-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          min-height: 0;
-        }
-
-        .be-grid-header {
-          padding: 4px 10px;
-          font-size: 10px;
-          color: #666;
-          background: #a0a0a0;
-          border-bottom: 1px solid #888;
-        }
+        .be-content { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+        .be-grid-header { padding: 4px 10px; font-size: 10px; color: #666; background: #a0a0a0; border-bottom: 1px solid #888; }
 
         .be-grid {
           flex: 1;
@@ -699,39 +771,12 @@ export function BlockBrowser() {
         }
 
         .be-block:hover { filter: brightness(1.2); z-index: 1; }
-
         .be-block.selected { border-color: #5c9bd4 #3a5f89 #3a5f89 #5c9bd4; }
-
         .be-block-inner { position: absolute; inset: 0; }
-
-        .be-block-inner img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
-        }
-
+        .be-block-inner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
         .be-block-inner div { position: absolute; inset: 0; }
-
-        .be-block-pin {
-          position: absolute;
-          top: 0;
-          right: 0;
-          font-size: 8px;
-          z-index: 2;
-        }
-
-        .be-empty {
-          grid-column: 1 / -1;
-          text-align: center;
-          padding: 20px;
-          color: #555;
-          font-size: 11px;
-        }
-
+        .be-block-pin { position: absolute; top: 0; right: 0; font-size: 8px; z-index: 2; }
+        .be-empty { grid-column: 1 / -1; text-align: center; padding: 20px; color: #555; font-size: 11px; }
         .be-load-more {
           grid-column: 1 / -1;
           text-align: center;
@@ -742,7 +787,6 @@ export function BlockBrowser() {
           border: 2px solid #555;
           cursor: pointer;
         }
-
         .be-load-more:hover { background: #7a7a7a; }
 
         .be-statusbar {
@@ -754,54 +798,15 @@ export function BlockBrowser() {
           border-top: 2px solid #555;
         }
 
-        .be-status-icon {
-          position: relative;
-          width: 36px;
-          height: 36px;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #404040 #1a1a1a #1a1a1a #404040;
-          flex-shrink: 0;
-        }
-
-        .be-status-icon img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
-        }
-
+        .be-status-icon { position: relative; width: 36px; height: 36px; background: #2d2d2d; border: 2px solid; border-color: #404040 #1a1a1a #1a1a1a #404040; flex-shrink: 0; }
+        .be-status-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
         .be-status-icon div { position: absolute; inset: 0; }
 
-        .be-status-info {
-          flex: 1;
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
-        .be-status-name {
-          font-size: 12px;
-          font-weight: bold;
-          color: #fff;
-          text-shadow: 1px 1px 0 #1a1a1a;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .be-status-meta {
-          font-size: 9px;
-          color: #888;
-          font-family: monospace;
-        }
+        .be-status-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .be-status-name { font-size: 12px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .be-status-meta { font-size: 9px; color: #888; font-family: monospace; }
 
         .be-status-actions { display: flex; gap: 4px; }
-
         .be-action {
           width: 26px;
           height: 26px;
@@ -815,11 +820,8 @@ export function BlockBrowser() {
           align-items: center;
           justify-content: center;
         }
-
         .be-action:hover { background: #4a4a4a; }
-
         .be-action.pinned { color: #ffd700; }
-
         .be-action.inbar { color: #5c9bd4; }
 
         .be-picker-overlay {
@@ -866,15 +868,8 @@ export function BlockBrowser() {
           line-height: 1;
           padding: 0;
         }
-
         .be-picker-close:hover { background: #4a4a4a; }
-
-        .be-picker-search {
-          padding: 6px;
-          background: #8b8b8b;
-          border-bottom: 1px solid #6b6b6b;
-        }
-
+        .be-picker-search { padding: 6px; background: #8b8b8b; border-bottom: 1px solid #6b6b6b; }
         .be-picker-search input {
           width: 100%;
           padding: 5px 7px;
@@ -908,44 +903,13 @@ export function BlockBrowser() {
           border-color: #404040 #1a1a1a #1a1a1a #404040;
           cursor: pointer;
         }
-
         .be-picker-item:hover { filter: brightness(1.2); }
 
-        .be-picker-icon {
-          position: relative;
-          width: 32px;
-          height: 32px;
-          background: #3a3a3a;
-        }
-
-        .be-picker-icon img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
-        }
-
+        .be-picker-icon { position: relative; width: 32px; height: 32px; background: #3a3a3a; }
+        .be-picker-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
         .be-picker-icon div { position: absolute; inset: 0; }
-
-        .be-picker-item span {
-          font-size: 7px;
-          color: #aaa;
-          text-align: center;
-          max-width: 100%;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .be-picker-empty {
-          grid-column: 1 / -1;
-          text-align: center;
-          padding: 16px;
-          color: #555;
-        }
+        .be-picker-item span { font-size: 7px; color: #aaa; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .be-picker-empty { grid-column: 1 / -1; text-align: center; padding: 16px; color: #555; }
 
         .be-context-menu {
           position: fixed;
@@ -957,53 +921,14 @@ export function BlockBrowser() {
           padding: 4px 0;
         }
 
-        .be-context-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: #3a3a3a;
-        }
-
-        .be-context-icon {
-          position: relative;
-          width: 32px;
-          height: 32px;
-          background: #4a4a4a;
-          border: 2px solid #555;
-        }
-
-        .be-context-icon img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
-        }
-
+        .be-context-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #3a3a3a; }
+        .be-context-icon { position: relative; width: 32px; height: 32px; background: #4a4a4a; border: 2px solid #555; }
+        .be-context-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
         .be-context-icon div { position: absolute; inset: 0; }
-
         .be-context-info { display: flex; flex-direction: column; gap: 2px; }
-
-        .be-context-name {
-          font-size: 12px;
-          font-weight: bold;
-          color: #fff;
-        }
-
-        .be-context-id {
-          font-size: 9px;
-          color: #888;
-          font-family: monospace;
-        }
-
-        .be-context-divider {
-          height: 1px;
-          background: #555;
-          margin: 4px 0;
-        }
+        .be-context-name { font-size: 12px; font-weight: bold; color: #fff; }
+        .be-context-id { font-size: 9px; color: #888; font-family: monospace; }
+        .be-context-divider { height: 1px; background: #555; margin: 4px 0; }
 
         .be-context-item {
           display: flex;
@@ -1019,71 +944,9 @@ export function BlockBrowser() {
           text-align: left;
           font-family: inherit;
         }
-
         .be-context-item:hover { background: #4a4a4a; }
-
-        .be-context-shortcut {
-          font-size: 9px;
-          color: #888;
-        }
-
+        .be-context-shortcut { font-size: 9px; color: #888; }
         .be-context-check { font-size: 10px; }
-
-        .be-tooltip {
-          position: fixed;
-          min-width: 140px;
-          background: #2d2d2d;
-          border: 2px solid;
-          border-color: #555 #1a1a1a #1a1a1a #555;
-          z-index: 150;
-          padding: 8px;
-        }
-
-        .be-tooltip-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 6px;
-        }
-
-        .be-tooltip-icon {
-          position: relative;
-          width: 32px;
-          height: 32px;
-          background: #4a4a4a;
-          border: 2px solid #555;
-        }
-
-        .be-tooltip-icon img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          image-rendering: pixelated;
-          z-index: 1;
-        }
-
-        .be-tooltip-icon div { position: absolute; inset: 0; }
-
-        .be-tooltip-name {
-          font-size: 12px;
-          font-weight: bold;
-          color: #fff;
-        }
-
-        .be-tooltip-id {
-          font-size: 9px;
-          color: #888;
-          font-family: monospace;
-        }
-
-        .be-tooltip-meta {
-          display: flex;
-          gap: 8px;
-          font-size: 9px;
-          color: #aaa;
-        }
       `}</style>
     </div>
   )
