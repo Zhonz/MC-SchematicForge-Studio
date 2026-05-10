@@ -83,6 +83,7 @@ const CATEGORY_COUNTS = {
 type ViewMode = 'grid' | 'list'
 type SortType = 'default' | 'name' | 'hardness' | 'category'
 type ActiveTab = 'recent' | 'pinned' | 'palette' | BlockCategory | 'all'
+type CategoryFilter = BlockCategory[]
 
 const CategoryIcon = ({ type }: { type: string }) => {
   const icons: Record<string, JSX.Element> = {
@@ -119,6 +120,8 @@ export function BlockBrowser() {
   const [hoveredBlock, setHoveredBlock] = useState<BlockData | null>(null)
   const [sortType, setSortType] = useState<SortType>('default')
   const [showSortMenu, setShowSortMenu] = useState(false)
+  const [categoryFilters, setCategoryFilters] = useState<CategoryFilter>([])
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -126,13 +129,25 @@ export function BlockBrowser() {
   const focusIndexRef = useRef(-1)
 
   const filteredBlocks = useMemo(() => {
-    if (searchQuery.trim()) return searchBlocks(searchQuery)
-    if (activeTab === 'recent') return recent
-    if (activeTab === 'pinned') return pinned.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
-    if (activeTab === 'palette') return palette.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
-    if (activeTab === 'all') return BLOCKS
-    return getBlocksByCategory(activeTab)
-  }, [activeTab, searchQuery, recent, pinned, palette])
+    let blocks: BlockData[]
+    if (searchQuery.trim()) {
+      blocks = searchBlocks(searchQuery)
+    } else if (activeTab === 'recent') {
+      return recent
+    } else if (activeTab === 'pinned') {
+      return pinned.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    } else if (activeTab === 'palette') {
+      return palette.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    } else if (activeTab === 'all') {
+      blocks = BLOCKS
+    } else {
+      blocks = getBlocksByCategory(activeTab)
+    }
+    if (categoryFilters.length > 0) {
+      blocks = blocks.filter(b => categoryFilters.includes(b.category))
+    }
+    return blocks
+  }, [activeTab, searchQuery, recent, pinned, palette, categoryFilters])
 
   const sortedBlocks = useMemo(() => {
     if (['recent', 'pinned', 'palette', 'all'].includes(activeTab) && !searchQuery.trim()) {
@@ -169,7 +184,7 @@ export function BlockBrowser() {
     return filteredBlocks.length > displayedBlocks.length
   }, [filteredBlocks.length, displayedBlocks.length, searchQuery, activeTab])
 
-  useEffect(() => { setPage(0); focusIndexRef.current = -1 }, [activeTab, searchQuery, sortType])
+  useEffect(() => { setPage(0); focusIndexRef.current = -1 }, [activeTab, searchQuery, sortType, categoryFilters])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -269,6 +284,7 @@ export function BlockBrowser() {
       }
       if (historyRef.current && !historyRef.current.contains(e.target as Node)) setShowHistory(false)
       setShowSortMenu(false)
+      setShowFilterMenu(false)
       setContextMenu({ show: false, x: 0, y: 0, block: null })
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -431,6 +447,18 @@ export function BlockBrowser() {
     setDragOverSlot(null)
   }
 
+  const toggleCategoryFilter = (cat: BlockCategory) => {
+    setCategoryFilters(prev => {
+      if (prev.includes(cat)) {
+        return prev.filter(c => c !== cat)
+      }
+      return [...prev, cat]
+    })
+  }
+
+  const clearCategoryFilters = () => setCategoryFilters([])
+  const selectAllFilters = () => setCategoryFilters(['building', 'natural', 'decoration', 'redstone', 'utility'])
+
   const pickerBlocks = useMemo(() => {
     if (pickerSearch.trim()) return searchBlocks(pickerSearch).slice(0, 80)
     return BLOCKS.slice(0, 80)
@@ -498,27 +526,58 @@ export function BlockBrowser() {
               <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </button>
+          <button className="bp-icon-btn" onClick={() => setShowFilterMenu(!showFilterMenu)} title="筛选分类" data-active={categoryFilters.length > 0}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M1 3h10M2 6h8M3 9h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="3" cy="3" r="1.5" fill="currentColor"/>
+              <circle cx="6" cy="6" r="1.5" fill="currentColor"/>
+              <circle cx="9" cy="9" r="1.5" fill="currentColor"/>
+            </svg>
+          </button>
         </div>
       </div>
 
       {showSortMenu && (
+         <div className="bp-sort-menu">
+           <button className={sortType === 'default' ? 'active' : ''} onClick={() => { setSortType('default'); setShowSortMenu(false) }}>
+             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1" fill="none" stroke="currentColor"/></svg>
+             默认排序
+           </button>
+           <button className={sortType === 'name' ? 'active' : ''} onClick={() => { setSortType('name'); setShowSortMenu(false) }}>
+             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><text x="2" y="8" fontSize="7" fontWeight="bold">A</text></svg>
+             按名称排序
+           </button>
+           <button className={sortType === 'hardness' ? 'active' : ''} onClick={() => { setSortType('hardness'); setShowSortMenu(false) }}>
+             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 8L5 2l3 6H2z"/></svg>
+             按硬度排序
+           </button>
+           <button className={sortType === 'category' ? 'active' : ''} onClick={() => { setSortType('category'); setShowSortMenu(false) }}>
+             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="0.5" y="5.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="5.5" width="4" height="4" rx="0.5"/></svg>
+             按分类排序
+           </button>
+         </div>
+       )}
+
+      {showFilterMenu && (
         <div className="bp-sort-menu">
-          <button className={sortType === 'default' ? 'active' : ''} onClick={() => { setSortType('default'); setShowSortMenu(false) }}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1" fill="none" stroke="currentColor"/></svg>
-            默认排序
-          </button>
-          <button className={sortType === 'name' ? 'active' : ''} onClick={() => { setSortType('name'); setShowSortMenu(false) }}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><text x="2" y="8" fontSize="7" fontWeight="bold">A</text></svg>
-            按名称排序
-          </button>
-          <button className={sortType === 'hardness' ? 'active' : ''} onClick={() => { setSortType('hardness'); setShowSortMenu(false) }}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 8L5 2l3 6H2z"/></svg>
-            按硬度排序
-          </button>
-          <button className={sortType === 'category' ? 'active' : ''} onClick={() => { setSortType('category'); setShowSortMenu(false) }}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="0.5" width="4" height="4" rx="0.5"/><rect x="0.5" y="5.5" width="4" height="4" rx="0.5"/><rect x="5.5" y="5.5" width="4" height="4" rx="0.5"/></svg>
-            按分类排序
-          </button>
+          <div className="bp-filter-header">
+            <span>筛选分类</span>
+            <div className="bp-filter-actions">
+              <button onClick={selectAllFilters}>全选</button>
+              <button onClick={clearCategoryFilters}>清除</button>
+            </div>
+          </div>
+          {(['building', 'natural', 'decoration', 'redstone', 'utility'] as BlockCategory[]).map(cat => (
+            <button
+              key={cat}
+              className={categoryFilters.includes(cat) ? 'active' : ''}
+              onClick={() => toggleCategoryFilter(cat)}
+            >
+              <CategoryIcon type={CATEGORIES.find(c => c.key === cat)?.icon || 'grid'} />
+              {CATEGORIES.find(c => c.key === cat)?.label}
+              <span className="bp-filter-count">{BLOCKS.filter(b => b.category === cat).length}</span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -678,6 +737,16 @@ export function BlockBrowser() {
               <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
             {sortType === 'name' ? '名称' : sortType === 'hardness' ? '硬度' : '分类'}
+          </span>
+        )}
+        {categoryFilters.length > 0 && (
+          <span className="bp-sort-badge">
+            <svg width="8" height="8" viewBox="0 0 12 12" fill="currentColor">
+              <circle cx="3" cy="3" r="1.5"/>
+              <circle cx="6" cy="6" r="1.5"/>
+              <circle cx="9" cy="9" r="1.5"/>
+            </svg>
+            {categoryFilters.length}类
           </span>
         )}
         {hasMore && (
@@ -992,6 +1061,42 @@ export function BlockBrowser() {
         .bp-sort-menu button.active { color: var(--accent); background: var(--accent-dim); }
         .bp-sort-menu button svg { opacity: 0.6; }
         .bp-sort-menu button.active svg { opacity: 1; }
+
+        .bp-filter-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 12px;
+          font-size: 10px;
+          color: var(--text-3);
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          background: var(--bg-2);
+          border-bottom: 1px solid var(--border);
+        }
+        .bp-filter-actions {
+          display: flex;
+          gap: 6px;
+        }
+        .bp-filter-actions button {
+          padding: 2px 8px;
+          font-size: 9px;
+          background: var(--bg-3);
+          border: 1px solid var(--border);
+          border-radius: 3px;
+          color: var(--text-2);
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.1s;
+        }
+        .bp-filter-actions button:hover { background: var(--bg-4); color: var(--text-1); }
+        .bp-filter-count {
+          margin-left: auto;
+          font-size: 9px;
+          color: var(--text-3);
+          font-family: monospace;
+        }
+        .bp-sort-menu button.active .bp-filter-count { color: var(--accent); }
 
         .bp-help {
           padding: 12px 14px;
