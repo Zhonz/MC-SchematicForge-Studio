@@ -4,6 +4,7 @@ import { useSceneStore } from '@/stores/sceneStore'
 import { useStructureStore } from '@/stores/structureStore'
 import { STRUCTURES } from '@/data/minecraftStructures'
 import { StructureGhost } from '@/utils/StructureGhost'
+import { getMCTextureURL, BLOCK_TEXTURE_MAP } from '@/services/textureService'
 
 const BLOCK_SIZE = 1
 const COLORS: Record<string, string> = {
@@ -99,6 +100,8 @@ export function SceneViewport() {
     isPanning: false,
     lastMouse: { x: 0, y: 0 }
   })
+  const textureLoaderRef = useRef<THREE.TextureLoader | null>(null)
+  const textureCacheRef = useRef<Map<string, THREE.Texture>>(new Map())
   const [blockCount, setBlockCount] = useState(0)
   const [hoverInfo, setHoverInfo] = useState<{ x: number; y: number; z: number; blockId: string } | null>(null)
   const [blockConfig, setBlockConfig] = useState<{ x: number; y: number; z: number; blockId: string } | null>(null)
@@ -131,6 +134,8 @@ export function SceneViewport() {
     renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
+
+    textureLoaderRef.current = new THREE.TextureLoader()
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.4)
     scene.add(ambientLight)
@@ -484,7 +489,7 @@ export function SceneViewport() {
   const updateBlocks = useCallback(() => {
     const currentBlocks = useSceneStore.getState().blocks
     const scene = sceneRef.current
-    if (!scene) return
+    if (!scene || !textureLoaderRef.current) return
 
     setBlockCount(currentBlocks.size)
 
@@ -508,11 +513,37 @@ export function SceneViewport() {
                            blockId.includes('button')
 
       const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
-      const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(color),
-        transparent: isTransparent,
-        opacity: isTransparent ? 0.7 : 1.0
-      })
+      
+      const cachedTexture = textureCacheRef.current.get(blockId)
+      let material: THREE.MeshStandardMaterial
+      
+      if (cachedTexture) {
+        material = new THREE.MeshStandardMaterial({
+          map: cachedTexture,
+          transparent: isTransparent,
+          opacity: isTransparent ? 0.7 : 1.0
+        })
+      } else {
+        material = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(color),
+          transparent: isTransparent,
+          opacity: isTransparent ? 0.7 : 1.0
+        })
+        
+        const textureURL = getMCTextureURL(blockId)
+        const loader = textureLoaderRef.current!
+        loader.load(
+          textureURL,
+          (texture) => {
+            texture.colorSpace = THREE.SRGBColorSpace
+            textureCacheRef.current.set(blockId, texture)
+            material.map = texture
+            material.needsUpdate = true
+          },
+          undefined,
+          () => {}
+        )
+      }
 
       const mesh = new THREE.Mesh(geometry, material)
       mesh.position.set(x + 0.5, y + 0.5, z + 0.5)
