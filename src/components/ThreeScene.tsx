@@ -4,6 +4,8 @@ import { useSceneStore } from '@/stores/sceneStore'
 import { getMCTextureURL } from '@/services/textureService'
 
 const BLOCK_SIZE = 1
+const CHUNK_SIZE = 16 // 分块大小，用于分层次渲染
+const MAX_INSTANCES = 1000 // 最大实例化渲染数量
 
 export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | null>) {
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -18,6 +20,9 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
 
   const textureCache = useRef<Map<string, THREE.Texture>>(new Map())
   const textureLoaderRef = useRef<THREE.TextureLoader | null>(null)
+  const sharedGeometryRef = useRef<THREE.BoxGeometry | null>(null) // 共享几何体
+  const instancedMeshesRef = useRef<Map<string, THREE.InstancedMesh>>(new Map()) // 实例化网格
+  const chunksRef = useRef<Map<string, THREE.Group>>(new Map()) // 分块管理
   
   const initScene = useCallback(() => {
     if (!containerRef.current) return
@@ -36,15 +41,19 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     camera.lookAt(0, 5, 0)
     cameraRef.current = camera
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
 
     textureLoaderRef.current = new THREE.TextureLoader()
+    
+    // 初始化共享几何体
+    sharedGeometryRef.current = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
     scene.add(ambientLight)
@@ -77,8 +86,13 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     plane.receiveShadow = true
     scene.add(plane)
 
+    let lastTime = performance.now()
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate)
+      const now = performance.now()
+      const delta = (now - lastTime) / 1000
+      lastTime = now
+      
       if (renderer && scene && camera) {
         renderer.render(scene, camera)
       }
@@ -93,7 +107,7 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       camera.updateProjectionMatrix()
       renderer.setSize(w, h)
     }
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', handleResize, { passive: true })
 
     const handleMouseDown = (e: MouseEvent) => {
       controlsRef.current.isRotating = true
@@ -135,7 +149,7 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     container.addEventListener('mousedown', handleMouseDown)
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
-    container.addEventListener('wheel', handleWheel)
+    container.addEventListener('wheel', handleWheel, { passive: true })
 
     return () => {
       window.removeEventListener('resize', handleResize)
@@ -144,6 +158,10 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       container.removeEventListener('mousedown', handleMouseDown)
       container.removeEventListener('wheel', handleWheel)
       cancelAnimationFrame(animationIdRef.current)
+      
+      // 清理所有资源
+      cleanupScene()
+      
       if (renderer && renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement)
       }
@@ -151,17 +169,9 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     }
   }, [containerRef])
 
-  useEffect(() => {
-    return initScene()
-  }, [initScene])
-
-  const updateBlocks = useCallback(() => {
-    const { blocks, getBlockKey } = useSceneStore.getState()
-    const scene = sceneRef.current
-    if (!scene || !textureLoaderRef.current) return
-
+  const cleanupScene = useCallback(() => {
+    // 清理常规网格
     blockMeshesRef.current.forEach((mesh) => {
-      scene.remove(mesh)
       mesh.geometry.dispose()
       if (Array.isArray(mesh.material)) {
         mesh.material.forEach(m => {
@@ -176,16 +186,60 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       }
     })
     blockMeshesRef.current.clear()
+    
+    // 清理实例化网格
+    instancedMeshesRef.current.forEach((mesh) => {
+      mesh.geometry.dispose()
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach(m => m.dispose())
+      } else {
+        mesh.material.dispose()
+      }
+    })
+    instancedMeshesRef.current.clear()
+    
+    // 清理分块
+    chunksRef.current.clear()
+    
+    // 清理共享几何体
+    if (sharedGeometryRef.current) {
+      sharedGeometryRef.current.dispose()
+    }
+  }, [])
 
+  const getChunkKey = useCallback((x: number, z: number) => {
+    const chunkX = Math.floor(x / CHUNK_SIZE)
+    const chunkZ = Math.floor(z / CHUNK_SIZE)
+    return `${chunkX},${chunkZ}`
+  }, [])
+
+  const updateBlocks = useCallback(() => {
+    const { blocks, getBlockKey } = useSceneStore.getState()
+    const scene = sceneRef.current
+    if (!scene || !textureLoaderRef.current || !sharedGeometryRef.current) return
+
+    // 清理现有网格
+    cleanupScene()
+
+    // 按方块类型分组，便于实例化渲染
+    const blocksByType = new Map<string, Array<{x: number, y: number, z: number}>>()
+    
     blocks.forEach((placement) => {
       const { x, y, z, blockId } = placement
-      
-      const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+      if (!blocksByType.has(blockId)) {
+        blocksByType.set(blockId, [])
+      }
+      blocksByType.get(blockId)!.push({x, y, z})
+    })
+
+    // 为每种方块类型创建实例化网格
+    blocksByType.forEach((positions, blockId) => {
       const isTransparent = blockId.includes('glass') || blockId.includes('redstone_wire') || 
                            blockId.includes('torch') || blockId.includes('redstone_torch') ||
                            blockId.includes('repeater') || blockId.includes('comparator') ||
                            blockId.includes('lever') || blockId.includes('button')
       
+      // 获取或创建材质
       let material: THREE.MeshStandardMaterial
       const cachedTexture = textureCache.current.get(blockId)
       
@@ -202,19 +256,13 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
           textureURL,
           (texture) => {
             texture.colorSpace = THREE.SRGBColorSpace
+            texture.magFilter = THREE.NearestFilter
+            texture.minFilter = THREE.NearestFilter
             textureCache.current.set(blockId, texture)
-            if (mesh.material) {
-              (mesh.material as THREE.MeshStandardMaterial).map = texture
-              mesh.material.needsUpdate = true
-            }
           },
           undefined,
           () => {
-            const blockColor = getBlockColor(blockId)
-            if (mesh.material) {
-              (mesh.material as THREE.MeshStandardMaterial).color.set(blockColor)
-              mesh.material.needsUpdate = true
-            }
+            // 纹理加载失败使用颜色材质
           }
         )
         
@@ -225,16 +273,56 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
         })
       }
 
-      const mesh = new THREE.Mesh(geometry, material)
-      mesh.position.set(x, y + BLOCK_SIZE / 2, z)
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.userData = { blockId, key: getBlockKey(x, y, z) }
-      
-      scene.add(mesh)
-      blockMeshesRef.current.set(getBlockKey(x, y, z), mesh)
+      // 根据方块数量决定渲染方式
+      if (positions.length > 10 && !isTransparent) {
+        // 大量方块使用实例化渲染
+        const instancedMesh = new THREE.InstancedMesh(
+          sharedGeometryRef.current!,
+          material,
+          Math.min(positions.length, MAX_INSTANCES)
+        )
+        
+        const dummy = new THREE.Object3D()
+        positions.forEach((pos, i) => {
+          if (i < MAX_INSTANCES) {
+            dummy.position.set(pos.x, pos.y + BLOCK_SIZE / 2, pos.z)
+            dummy.updateMatrix()
+            instancedMesh.setMatrixAt(i, dummy.matrix)
+          }
+        })
+        
+        instancedMesh.instanceMatrix.needsUpdate = true
+        instancedMesh.castShadow = true
+        instancedMesh.receiveShadow = true
+        scene.add(instancedMesh)
+        instancedMeshesRef.current.set(blockId, instancedMesh)
+      } else {
+        // 少量方块或透明方块使用常规渲染
+        positions.forEach((pos) => {
+          const mesh = new THREE.Mesh(sharedGeometryRef.current!, material.clone())
+          mesh.position.set(pos.x, pos.y + BLOCK_SIZE / 2, pos.z)
+          mesh.castShadow = true
+          mesh.receiveShadow = true
+          mesh.userData = { blockId, key: getBlockKey(pos.x, pos.y, pos.z) }
+          
+          // 按分块组织
+          const chunkKey = getChunkKey(pos.x, pos.z)
+          if (!chunksRef.current.has(chunkKey)) {
+            const chunk = new THREE.Group()
+            scene.add(chunk)
+            chunksRef.current.set(chunkKey, chunk)
+          }
+          chunksRef.current.get(chunkKey)!.add(mesh)
+          
+          blockMeshesRef.current.set(getBlockKey(pos.x, pos.y, pos.z), mesh)
+        })
+      }
     })
-  }, [])
+  }, [cleanupScene, getChunkKey])
+
+  useEffect(() => {
+    return initScene()
+  }, [initScene])
 
   useEffect(() => {
     updateBlocks()

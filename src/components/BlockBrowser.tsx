@@ -5,15 +5,18 @@ import { getMCTextureURL } from '@/services/textureService'
 import type { BlockCategory, BlockData } from '@/types'
 
 const QUICK_SLOTS = 9
-const FAVORITES_KEY = 'sf_quickbar'
-const RECENT_KEY = 'sf_recent'
-const PINNED_KEY = 'sf_pinned'
-const PALETTE_KEY = 'sf_palette'
-const SEARCH_HISTORY_KEY = 'sf_search_history'
+const STORAGE_KEYS = {
+  quickbar: 'sf_quickbar',
+  recent: 'sf_recent',
+  pinned: 'sf_pinned',
+  palette: 'sf_palette',
+  searchHistory: 'sf_search_history',
+} as const
 const MAX_RECENT = 18
 const MAX_PALETTE = 12
 const MAX_SEARCH_HISTORY = 10
 const PAGE_SIZE = 48
+const PREVIEW_DELAY = 400
 
 const CATEGORIES = [
   { key: 'all', label: '全部', icon: 'grid' },
@@ -24,60 +27,48 @@ const CATEGORIES = [
   { key: 'utility', label: '功能', icon: 'tool' },
 ] as const
 
-function loadFavorites(): BlockData[] {
+const CATEGORY_ORDER: Record<string, number> = {
+  building: 0, natural: 1, decoration: 2, redstone: 3, utility: 4
+}
+
+const loadStorage = <T,>(key: string, fallback: T, parser: (s: string) => T = JSON.parse): T => {
   try {
-    const saved = localStorage.getItem(FAVORITES_KEY)
-    if (saved) {
-      const ids = JSON.parse(saved) as string[]
-      const blocks = ids.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
-      if (blocks.length === QUICK_SLOTS) return blocks
-    }
+    const saved = localStorage.getItem(key)
+    if (saved) return parser(saved)
   } catch {}
+  return fallback
+}
+
+const saveStorage = (key: string, data: unknown) => {
+  try { localStorage.setItem(key, JSON.stringify(data)) } catch {}
+}
+
+const shortId = (id: string) => id.replace('minecraft:', '')
+
+function loadFavorites(): BlockData[] {
+  const ids = loadStorage<string[]>(STORAGE_KEYS.quickbar, [])
+  if (ids.length === QUICK_SLOTS) {
+    const blocks = ids.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
+    if (blocks.length === QUICK_SLOTS) return blocks
+  }
   return BLOCKS.slice(0, QUICK_SLOTS)
 }
 
 function loadRecent(): BlockData[] {
-  try {
-    const saved = localStorage.getItem(RECENT_KEY)
-    if (saved) {
-      const ids = JSON.parse(saved) as string[]
-      return ids.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
-    }
-  } catch {}
-  return []
+  const ids = loadStorage<string[]>(STORAGE_KEYS.recent, [])
+  return ids.map(id => BLOCKS.find(b => b.id === id)).filter((b): b is BlockData => !!b)
 }
 
 function loadPinned(): string[] {
-  try {
-    const saved = localStorage.getItem(PINNED_KEY)
-    if (saved) return JSON.parse(saved) as string[]
-  } catch {}
-  return []
+  return loadStorage<string[]>(STORAGE_KEYS.pinned, [])
 }
 
 function loadPalette(): string[] {
-  try {
-    const saved = localStorage.getItem(PALETTE_KEY)
-    if (saved) return JSON.parse(saved) as string[]
-  } catch {}
-  return BLOCKS.slice(0, MAX_PALETTE).map(b => b.id)
+  return loadStorage<string[]>(STORAGE_KEYS.palette, BLOCKS.slice(0, MAX_PALETTE).map(b => b.id))
 }
 
 function loadSearchHistory(): string[] {
-  try {
-    const saved = localStorage.getItem(SEARCH_HISTORY_KEY)
-    if (saved) return JSON.parse(saved) as string[]
-  } catch {}
-  return []
-}
-
-const CATEGORY_COUNTS = {
-  all: BLOCKS.length,
-  building: BLOCKS.filter(b => b.category === 'building').length,
-  natural: BLOCKS.filter(b => b.category === 'natural').length,
-  redstone: BLOCKS.filter(b => b.category === 'redstone').length,
-  decoration: BLOCKS.filter(b => b.category === 'decoration').length,
-  utility: BLOCKS.filter(b => b.category === 'utility').length,
+  return loadStorage<string[]>(STORAGE_KEYS.searchHistory, [])
 }
 
 type ViewMode = 'grid' | 'list'
@@ -196,10 +187,12 @@ export function BlockBrowser() {
     const handleScroll = () => {
       if (!gridRef.current || !hasMore) return
       const { scrollTop, scrollHeight, clientHeight } = gridRef.current
-      if (scrollTop + clientHeight >= scrollHeight - 80) setPage(p => p + 1)
+      if (scrollTop + clientHeight >= scrollHeight - 80) {
+        setPage(p => p + 1)
+      }
     }
     const grid = gridRef.current
-    if (grid) grid.addEventListener('scroll', handleScroll)
+    if (grid) grid.addEventListener('scroll', handleScroll, { passive: true })
     return () => grid?.removeEventListener('scroll', handleScroll)
   }, [hasMore])
 
@@ -281,7 +274,7 @@ export function BlockBrowser() {
             newFavs.splice(idx, 1)
             newFavs.push(BLOCKS[0])
             setFavorites(newFavs)
-            try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+            saveStorage(STORAGE_KEYS.quickbar, newFavs.map(b => b.id))
           }
         }
       }
@@ -316,7 +309,7 @@ export function BlockBrowser() {
       setRecent(prev => {
         const filtered = prev.filter(b => b.id !== selectedBlock.id)
         const newRecent = [selectedBlock, ...filtered].slice(0, MAX_RECENT)
-        try { localStorage.setItem(RECENT_KEY, JSON.stringify(newRecent.map(b => b.id))) } catch {}
+        saveStorage(STORAGE_KEYS.recent, newRecent.map(b => b.id))
         return newRecent
       })
     }
@@ -369,7 +362,7 @@ export function BlockBrowser() {
     if (searchQuery.trim()) {
       const newHistory = [searchQuery, ...searchHistory.filter(h => h !== searchQuery)].slice(0, MAX_SEARCH_HISTORY)
       setSearchHistory(newHistory)
-      try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(newHistory)) } catch {}
+      saveStorage(STORAGE_KEYS.searchHistory, newHistory)
     }
     setShowHistory(false)
   }
@@ -384,8 +377,8 @@ export function BlockBrowser() {
     if (showPicker !== null) {
       const newFavs = [...favorites]
       newFavs[showPicker] = block
-      setFavorites(newFavs)
-      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+        setFavorites(newFavs)
+        saveStorage(STORAGE_KEYS.quickbar, newFavs.map(b => b.id))
       setShowPicker(null)
       setPickerSearch('')
     }
@@ -398,7 +391,7 @@ export function BlockBrowser() {
     if (existing >= 0) { setShowPicker(existing); return }
     const newFavs = [...favorites.slice(1), target]
     setFavorites(newFavs)
-    try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+    saveStorage(STORAGE_KEYS.quickbar, newFavs.map(b => b.id))
   }
 
   const handleTogglePin = (block?: BlockData) => {
@@ -407,11 +400,11 @@ export function BlockBrowser() {
     if (pinned.includes(target.id)) {
       const newPinned = pinned.filter(id => id !== target.id)
       setPinned(newPinned)
-      try { localStorage.setItem(PINNED_KEY, JSON.stringify(newPinned)) } catch {}
+      saveStorage(STORAGE_KEYS.pinned, newPinned)
     } else {
       const newPinned = [target.id, ...pinned].slice(0, 18)
       setPinned(newPinned)
-      try { localStorage.setItem(PINNED_KEY, JSON.stringify(newPinned)) } catch {}
+      saveStorage(STORAGE_KEYS.pinned, newPinned)
     }
   }
 
@@ -421,12 +414,12 @@ export function BlockBrowser() {
     if (!palette.includes(target.id)) {
       const newPalette = [target.id, ...palette].slice(0, MAX_PALETTE)
       setPalette(newPalette)
-      try { localStorage.setItem(PALETTE_KEY, JSON.stringify(newPalette)) } catch {}
+      saveStorage(STORAGE_KEYS.palette, newPalette)
     }
   }
 
   const handleCopyId = (id: string) => {
-    navigator.clipboard.writeText(id.replace('minecraft:', ''))
+    navigator.clipboard.writeText(shortId(id))
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 1500)
   }
@@ -447,7 +440,7 @@ export function BlockBrowser() {
       const [removed] = newFavs.splice(draggedSlot, 1)
       newFavs.splice(dragOverSlot, 0, removed)
       setFavorites(newFavs)
-      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+      saveStorage(STORAGE_KEYS.quickbar, newFavs.map(b => b.id))
     }
     setDraggedSlot(null)
     setDragOverSlot(null)
@@ -483,7 +476,7 @@ export function BlockBrowser() {
         newFavs = favorites
       }
       setFavorites(newFavs)
-      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavs.map(b => b.id))) } catch {}
+      saveStorage(STORAGE_KEYS.quickbar, newFavs.map(b => b.id))
     }
     setDraggedSlot(null)
     setDragOverSlot(null)
@@ -1027,7 +1020,7 @@ export function BlockBrowser() {
           <div className="bp-preview-info">
             <div className="bp-preview-name">{getHighlightedText(previewBlock.nameZh, searchQuery)}</div>
             <div className="bp-preview-name-en">{getHighlightedText(previewBlock.name, searchQuery)}</div>
-            <div className="bp-preview-id">{previewBlock.id.replace('minecraft:', '')}</div>
+            <div className="bp-preview-id">{shortId(previewBlock.id)}</div>
             <div className="bp-preview-meta">
               <span className={`bp-preview-cat bp-cat-${previewBlock.category}`}>
                 {CATEGORIES.find(c => c.key === previewBlock.category)?.label || previewBlock.category}
@@ -1093,7 +1086,7 @@ export function BlockBrowser() {
             </div>
             <div>
               <div className="bp-context-name">{contextMenu.block.nameZh}</div>
-              <div className="bp-context-id">{contextMenu.block.id.replace('minecraft:', '')}</div>
+              <div className="bp-context-id">{shortId(contextMenu.block.id)}</div>
             </div>
           </div>
           <div className="bp-context-sep" />
@@ -1142,7 +1135,7 @@ export function BlockBrowser() {
           </div>
           <div className="bp-footer-info">
             <div className="bp-footer-name">{selectedBlock.nameZh}</div>
-            <div className="bp-footer-meta">{selectedBlock.id.replace('minecraft:', '')} · 硬度 {selectedBlock.hardness}</div>
+            <div className="bp-footer-meta">{shortId(selectedBlock.id)} · 硬度 {selectedBlock.hardness}</div>
           </div>
           <div className="bp-footer-actions">
             <button
@@ -1524,7 +1517,7 @@ export function BlockBrowser() {
         }
         .bp-slot:hover {
           border-color: var(--border-light);
-          transform: translateY(-2px);
+          transform: translateY(-2px) scale(1.05);
           box-shadow:
             inset 0 1px 0 rgba(255,255,255,0.05),
             0 4px 12px rgba(0,0,0,0.5);
@@ -1535,6 +1528,19 @@ export function BlockBrowser() {
             inset 0 1px 0 rgba(255,255,255,0.05),
             0 0 0 2px rgba(99, 136, 212, 0.3),
             0 4px 12px rgba(0,0,0,0.5);
+        }
+        .bp-slot.active::before {
+          content: '';
+          position: absolute;
+          inset: -4px;
+          border: 1px solid var(--mc-blue);
+          border-radius: 6px;
+          opacity: 0.3;
+          animation: slotPulse 1.5s ease-in-out infinite;
+        }
+        @keyframes slotPulse {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.1; transform: scale(1.05); }
         }
         .bp-slot.drop {
           border-color: var(--mc-gold);
@@ -1559,6 +1565,13 @@ export function BlockBrowser() {
           inset: 0;
           border-radius: 2px;
           overflow: hidden;
+          transition: filter 0.15s ease;
+        }
+        .bp-slot:hover .bp-slot-img {
+          filter: brightness(1.15);
+        }
+        .bp-slot.active .bp-slot-img {
+          filter: brightness(1.2);
         }
         .bp-slot-img img,
         .bp-slot-img .bp-fallback {
@@ -1576,6 +1589,11 @@ export function BlockBrowser() {
           right: 2px;
           z-index: 4;
           filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
+          animation: pinShine 3s ease-in-out infinite;
+        }
+        @keyframes pinShine {
+          0%, 100% { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)) brightness(1); }
+          50% { filter: drop-shadow(0 1px 4px rgba(245, 200, 66, 0.5)) brightness(1.2); }
         }
 
         .bp-status {
@@ -1627,6 +1645,7 @@ export function BlockBrowser() {
           overflow-y: auto;
           padding: 8px;
           background: var(--mc-black);
+          position: relative;
         }
         .bp-grid.grid {
           display: grid;
@@ -1662,6 +1681,10 @@ export function BlockBrowser() {
           from { opacity: 0; transform: scale(0.9) translateY(8px); }
           to { opacity: 1; transform: scale(1) translateY(0); }
         }
+        @keyframes itemPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(74, 143, 212, 0.4); }
+          50% { box-shadow: 0 0 0 4px rgba(74, 143, 212, 0); }
+        }
         .bp-grid.grid .bp-item:nth-child(2n) { animation-delay: 0.02s; }
         .bp-grid.grid .bp-item:nth-child(3n) { animation-delay: 0.04s; }
         .bp-grid.grid .bp-item:nth-child(4n) { animation-delay: 0.06s; }
@@ -1685,6 +1708,7 @@ export function BlockBrowser() {
         .bp-item.selected {
           border-color: var(--accent);
           box-shadow: 0 0 0 2px rgba(74, 143, 212, 0.3), 0 8px 20px rgba(0,0,0,0.5);
+          animation: itemPulse 2s ease-in-out infinite;
         }
         .bp-item.selected .bp-item-img {
           filter: brightness(1.15) saturate(1.2);
@@ -1694,7 +1718,11 @@ export function BlockBrowser() {
           outline-offset: 2px;
           box-shadow: 0 0 0 4px rgba(74, 143, 212, 0.2), 0 8px 20px rgba(0,0,0,0.5);
         }
-        .bp-item:active { cursor: grabbing; }
+        .bp-item:active { 
+          cursor: grabbing; 
+          transform: scale(0.95);
+          transition: transform 0.1s ease;
+        }
         .bp-item[draggable="true"]:active { opacity: 0.7; transform: scale(1.15); }
 
         .bp-item-img {
@@ -1775,13 +1803,23 @@ export function BlockBrowser() {
           border-radius: 8px;
           z-index: 400;
           box-shadow: 0 12px 40px rgba(0,0,0,0.7);
-          animation: previewIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          animation: previewIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
           pointer-events: none;
           min-width: 200px;
+          backdrop-filter: blur(8px);
+          background: linear-gradient(135deg, rgba(25, 25, 25, 0.95) 0%, rgba(30, 30, 30, 0.95) 100%);
         }
         @keyframes previewIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
+          from { opacity: 0; transform: scale(0.85) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .bp-preview::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 8px;
+          border: 1px solid rgba(74, 143, 212, 0.2);
+          pointer-events: none;
         }
         .bp-preview-img {
           position: relative;
@@ -1793,6 +1831,13 @@ export function BlockBrowser() {
           overflow: hidden;
           flex-shrink: 0;
           box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .bp-preview-img::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+          pointer-events: none;
         }
         .bp-preview-img img,
         .bp-preview-img .bp-fallback {

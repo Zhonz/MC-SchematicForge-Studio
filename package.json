@@ -7,23 +7,55 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint . --ext ts,tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "prepare": "husky install",
+    "pre-commit": "lint-staged",
+    "deploy": "bash deploy.sh",
+    "quick-push": "bash quick-push.sh"
   },
   "dependencies": {
+    "@types/three": "^0.170.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.170.0",
-    "@types/three": "^0.170.0",
     "zustand": "^4.5.5"
   },
   "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^14.2.2",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.6",
+    "husky": "^9.0.11",
+    "jsdom": "^24.0.0",
+    "lint-staged": "^15.2.2",
+    "postcss": "^8.4.49",
+    "prettier": "^3.2.5",
+    "tailwindcss": "^3.4.16",
     "typescript": "~5.6.2",
     "vite": "^6.0.1",
-    "tailwindcss": "^3.4.16",
-    "postcss": "^8.4.49",
-    "autoprefixer": "^10.4.20"
+    "vitest": "^1.4.0"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{css,scss,md,json}": [
+      "prettier --write"
+    ]
   }
 }

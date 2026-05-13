@@ -8,9 +8,13 @@ interface ToolbarProps {
   rightTab: 'wiki' | null
   onToggleLeft: (tab: PanelTab) => void
   onToggleRight: (tab: 'wiki' | null) => void
+  onToggleAIPanel?: () => void
+  showAIPanel?: boolean
+  onToggleDevTools?: () => void
+  showDevTools?: boolean
 }
 
-export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: ToolbarProps) {
+export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight, onToggleAIPanel, showAIPanel, onToggleDevTools, showDevTools }: ToolbarProps) {
   const { toolMode, setToolMode, clearScene, selectedBlock, saveScene, loadScene, exportSchematic } = useSceneStore()
   const [showExportMenu, setShowExportMenu] = useState(false)
 
@@ -133,6 +137,34 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
       </div>
 
       <div className="toolbar-right">
+        {onToggleAIPanel && (
+          <button 
+            className={`toolbar-btn btn-ai ${showAIPanel ? 'active' : ''}`}
+            onClick={onToggleAIPanel}
+            data-tooltip="AI智能建筑"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+              <path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/>
+              <circle cx="9" cy="10" r="1" fill="currentColor"/>
+              <circle cx="15" cy="10" r="1" fill="currentColor"/>
+              <path d="M9 15h6"/>
+            </svg>
+            <span>AI建筑</span>
+          </button>
+        )}
+        {onToggleDevTools && (
+          <button 
+            className={`toolbar-btn ${showDevTools ? 'active' : ''}`}
+            onClick={onToggleDevTools}
+            data-tooltip="开发者工具"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+          </button>
+        )}
         <button 
           className="toolbar-btn"
           onClick={clearScene}
@@ -232,6 +264,25 @@ export function Toolbar({ leftTab, rightTab, onToggleLeft, onToggleRight }: Tool
           background: var(--accent-primary-dim);
           box-shadow: var(--shadow-glow);
           color: #000000;
+        }
+
+        .btn-ai {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          font-weight: 600;
+          padding: 0 var(--space-4);
+        }
+
+        .btn-ai:hover {
+          background: linear-gradient(135deg, #5568d3 0%, #6a4190 100%);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+          color: white;
+        }
+
+        .btn-ai.active {
+          background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+          color: white;
         }
 
         .export-dropdown {
