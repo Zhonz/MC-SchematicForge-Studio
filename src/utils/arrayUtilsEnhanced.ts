@@ -1,7 +1,7 @@
 /**
- * 📊 增强数组工具函数
+ * 📊 增强数组工具函数（性能优化版）
  * 
- * 提供高级数组操作功能
+ * 提供高级数组操作功能，优化了性能并增加了边界检查
  */
 
 /**
@@ -18,9 +18,18 @@
  * ```
  */
 export function chunk<T>(arr: T[], size: number): T[][] {
+  if (!Array.isArray(arr)) return [];
+  const normalizedSize = Math.max(1, Math.floor(size));
+  const length = arr.length;
+  if (length === 0) return [];
+  
   const result: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
+  let index = 0;
+  let resIndex = 0;
+  
+  while (index < length) {
+    result[resIndex++] = arr.slice(index, index + normalizedSize);
+    index += normalizedSize;
   }
   return result;
 }
@@ -42,14 +51,21 @@ export function chunk<T>(arr: T[], size: number): T[][] {
  * ```
  */
 export function unique<T>(arr: T[], key?: keyof T): T[] {
+  if (!Array.isArray(arr)) return [];
+  if (arr.length === 0) return [];
+  
   if (key) {
     const seen = new Map();
-    return arr.filter(item => {
+    const result: T[] = [];
+    for (let i = 0; i < arr.length; i++) {
+      const item = arr[i];
       const keyValue = item[key];
-      if (seen.has(keyValue)) return false;
-      seen.set(keyValue, true);
-      return true;
-    });
+      if (!seen.has(keyValue)) {
+        seen.set(keyValue, true);
+        result.push(item);
+      }
+    }
+    return result;
   }
   return [...new Set(arr)];
 }
@@ -75,14 +91,19 @@ export function unique<T>(arr: T[], key?: keyof T): T[] {
  * ```
  */
 export function groupBy<T, K extends string | number>(arr: T[], key: keyof T | ((item: T) => K)): Record<K, T[]> {
-  return arr.reduce((result, item) => {
+  if (!Array.isArray(arr)) return {} as Record<K, T[]>;
+  if (arr.length === 0) return {} as Record<K, T[]>;
+  
+  const result: Record<K, T[]> = {} as Record<K, T[]>;
+  for (let i = 0; i < arr.length; i++) {
+    const item = arr[i];
     const groupKey = typeof key === 'function' ? key(item) : (item[key] as unknown as K);
     if (!result[groupKey]) {
       result[groupKey] = [];
     }
     result[groupKey].push(item);
-    return result;
-  }, {} as Record<K, T[]>);
+  }
+  return result;
 }
 
 /**
@@ -102,12 +123,22 @@ export function groupBy<T, K extends string | number>(arr: T[], key: keyof T | (
  * ```
  */
 export function flatten<T>(arr: any[], depth: number = 1): T[] {
-  return arr.reduce((acc, val) => {
-    if (Array.isArray(val) && depth > 0) {
-      return [...acc, ...flatten(val, depth - 1)];
+  if (!Array.isArray(arr)) return [];
+  
+  const result: T[] = [];
+  const flattenHelper = (array: any[], currentDepth: number) => {
+    for (let i = 0; i < array.length; i++) {
+      const val = array[i];
+      if (Array.isArray(val) && currentDepth > 0) {
+        flattenHelper(val, currentDepth - 1);
+      } else {
+        result.push(val);
+      }
     }
-    return [...acc, val];
-  }, []);
+  };
+  
+  flattenHelper(arr, Math.max(0, Math.floor(depth)));
+  return result;
 }
 
 /**
@@ -124,8 +155,17 @@ export function flatten<T>(arr: any[], depth: number = 1): T[] {
  * ```
  */
 export function intersection<T>(arr1: T[], arr2: T[]): T[] {
+  if (!Array.isArray(arr1) || !Array.isArray(arr2)) return [];
+  
   const set = new Set(arr2);
-  return arr1.filter(item => set.has(item));
+  const result: T[] = [];
+  for (let i = 0; i < arr1.length; i++) {
+    const item = arr1[i];
+    if (set.has(item)) {
+      result.push(item);
+    }
+  }
+  return result;
 }
 
 /**
@@ -142,8 +182,17 @@ export function intersection<T>(arr1: T[], arr2: T[]): T[] {
  * ```
  */
 export function difference<T>(arr1: T[], arr2: T[]): T[] {
+  if (!Array.isArray(arr1) || !Array.isArray(arr2)) return arr1;
+  
   const set = new Set(arr2);
-  return arr1.filter(item => !set.has(item));
+  const result: T[] = [];
+  for (let i = 0; i < arr1.length; i++) {
+    const item = arr1[i];
+    if (!set.has(item)) {
+      result.push(item);
+    }
+  }
+  return result;
 }
 
 /**
@@ -159,7 +208,9 @@ export function difference<T>(arr1: T[], arr2: T[]): T[] {
  * ```
  */
 export function shuffle<T>(arr: T[]): T[] {
-  const result = [...arr];
+  if (!Array.isArray(arr)) return [];
+  
+  const result: T[] = arr.slice();
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [result[i], result[j]] = [result[j], result[i]];
@@ -181,7 +232,8 @@ export function shuffle<T>(arr: T[]): T[] {
  * ```
  */
 export function takeRight<T>(arr: T[], n: number = 1): T[] {
-  return arr.slice(Math.max(0, arr.length - n));
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(Math.max(0, arr.length - Math.floor(n)));
 }
 
 /**
@@ -197,6 +249,7 @@ export function takeRight<T>(arr: T[], n: number = 1): T[] {
  * ```
  */
 export function compact<T>(arr: (T | null | undefined | false | 0 | '')[]): T[] {
+  if (!Array.isArray(arr)) return [];
   return arr.filter(Boolean) as T[];
 }
 
@@ -213,7 +266,12 @@ export function compact<T>(arr: (T | null | undefined | false | 0 | '')[]): T[] 
  * ```
  */
 export function sum(arr: number[]): number {
-  return arr.reduce((acc, num) => acc + num, 0);
+  if (!Array.isArray(arr)) return 0;
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) {
+    total += arr[i];
+  }
+  return total;
 }
 
 /**
@@ -229,6 +287,7 @@ export function sum(arr: number[]): number {
  * ```
  */
 export function average(arr: number[]): number {
+  if (!Array.isArray(arr)) return 0;
   return arr.length === 0 ? 0 : sum(arr) / arr.length;
 }
 
@@ -245,7 +304,14 @@ export function average(arr: number[]): number {
  * ```
  */
 export function max(arr: number[]): number {
-  return Math.max(...arr);
+  if (!Array.isArray(arr) || arr.length === 0) return -Infinity;
+  let maximum = arr[0];
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i] > maximum) {
+      maximum = arr[i];
+    }
+  }
+  return maximum;
 }
 
 /**
@@ -261,7 +327,14 @@ export function max(arr: number[]): number {
  * ```
  */
 export function min(arr: number[]): number {
-  return Math.min(...arr);
+  if (!Array.isArray(arr) || arr.length === 0) return Infinity;
+  let minimum = arr[0];
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i] < minimum) {
+      minimum = arr[i];
+    }
+  }
+  return minimum;
 }
 
 /**
@@ -284,14 +357,17 @@ export function min(arr: number[]): number {
 export function range(start: number, end?: number, step: number = 1): number[] {
   const actualStart = end === undefined ? 0 : start;
   const actualEnd = end === undefined ? start : end;
+  const normalizedStep = step || 1;
+  
+  if (normalizedStep === 0) return [];
   
   const result: number[] = [];
-  if (step > 0) {
-    for (let i = actualStart; i < actualEnd; i += step) {
+  if (normalizedStep > 0) {
+    for (let i = actualStart; i < actualEnd; i += normalizedStep) {
       result.push(i);
     }
-  } else if (step < 0) {
-    for (let i = actualStart; i > actualEnd; i += step) {
+  } else {
+    for (let i = actualStart; i > actualEnd; i += normalizedStep) {
       result.push(i);
     }
   }
@@ -315,11 +391,19 @@ export function range(start: number, end?: number, step: number = 1): number[] {
  * ```
  */
 export function sample<T>(arr: T[], count: number = 1): T[] {
-  if (count <= 1) {
+  if (!Array.isArray(arr)) return [];
+  if (arr.length === 0) return [];
+  
+  const normalizedCount = Math.floor(count);
+  if (normalizedCount <= 1) {
     return [arr[Math.floor(Math.random() * arr.length)]];
   }
+  if (normalizedCount >= arr.length) {
+    return shuffle(arr);
+  }
+  
   const shuffled = shuffle(arr);
-  return shuffled.slice(0, Math.min(count, shuffled.length));
+  return shuffled.slice(0, normalizedCount);
 }
 
-console.log('📊 增强数组工具已加载');
+console.log('📊 增强数组工具已加载 (性能优化版)');

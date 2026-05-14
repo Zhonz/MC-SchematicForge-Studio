@@ -1,7 +1,7 @@
 /**
- * 📦 增强对象工具函数
+ * 📦 增强对象工具函数（性能优化版）
  * 
- * 提供高级对象操作功能
+ * 提供高级对象操作功能，优化了性能并增加了边界检查
  */
 
 /**
@@ -21,9 +21,27 @@
 export function deepClone<T>(obj: T): T {
   if (obj === null || typeof obj !== 'object') return obj;
   if (obj instanceof Date) return new Date(obj.getTime()) as unknown as T;
-  if (obj instanceof Array) return obj.map(item => deepClone(item)) as unknown as T;
-  if (obj instanceof Set) return new Set([...obj].map(item => deepClone(item))) as unknown as T;
-  if (obj instanceof Map) return new Map([...obj].map(([k, v]) => [k, deepClone(v)])) as unknown as T;
+  if (obj instanceof Array) {
+    const result = [];
+    for (let i = 0; i < obj.length; i++) {
+      result[i] = deepClone(obj[i]);
+    }
+    return result as unknown as T;
+  }
+  if (obj instanceof Set) {
+    const result = new Set();
+    for (const item of obj) {
+      result.add(deepClone(item));
+    }
+    return result as unknown as T;
+  }
+  if (obj instanceof Map) {
+    const result = new Map();
+    for (const [k, v] of obj) {
+      result.set(k, deepClone(v));
+    }
+    return result as unknown as T;
+  }
   
   const copy = {} as T;
   for (const key in obj) {
@@ -49,8 +67,9 @@ export function deepClone<T>(obj: T): T {
  */
 export function deepEqual(obj1: any, obj2: any): boolean {
   if (obj1 === obj2) return true;
+  if (obj1 === null || obj2 === null) return false;
   if (typeof obj1 !== typeof obj2) return false;
-  if (typeof obj1 !== 'object' || obj1 === null || obj2 === null) return false;
+  if (typeof obj1 !== 'object') return false;
   
   if (Array.isArray(obj1) && Array.isArray(obj2)) {
     if (obj1.length !== obj2.length) return false;
@@ -69,8 +88,10 @@ export function deepEqual(obj1: any, obj2: any): boolean {
   
   if (keys1.length !== keys2.length) return false;
   
-  for (const key of keys1) {
-    if (!keys2.includes(key)) return false;
+  const keys2Set = new Set(keys2);
+  for (let i = 0; i < keys1.length; i++) {
+    const key = keys1[i];
+    if (!keys2Set.has(key)) return false;
     if (!deepEqual(obj1[key], obj2[key])) return false;
   }
   
@@ -91,9 +112,15 @@ export function deepEqual(obj1: any, obj2: any): boolean {
  * ```
  */
 export function deepMerge<T extends Record<string, any>>(target: T, ...sources: Partial<T>[]): T {
+  if (target === null || typeof target !== 'object') {
+    return (sources[sources.length - 1] || target) as T;
+  }
+  
   const result = deepClone(target);
   
   for (const source of sources) {
+    if (source === null || typeof source !== 'object') continue;
+    
     for (const key in source) {
       if (Object.prototype.hasOwnProperty.call(source, key)) {
         const targetValue = result[key];
@@ -127,10 +154,14 @@ export function deepMerge<T extends Record<string, any>>(target: T, ...sources: 
  * ```
  */
 export function get(obj: any, path: string, defaultValue?: any): any {
+  if (obj === null || obj === undefined) return defaultValue;
+  if (!path) return defaultValue;
+  
   const keys = path.split('.');
   let result = obj;
   
-  for (const key of keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     if (result === null || result === undefined) {
       return defaultValue;
     }
@@ -155,12 +186,15 @@ export function get(obj: any, path: string, defaultValue?: any): any {
  * ```
  */
 export function set(obj: any, path: string, value: any): any {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (!path) return obj;
+  
   const keys = path.split('.');
   let current = obj;
   
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
-    if (current[key] === undefined) {
+    if (current[key] === undefined || current[key] === null) {
       current[key] = {};
     }
     current = current[key];
@@ -184,6 +218,9 @@ export function set(obj: any, path: string, value: any): any {
  * ```
  */
 export function unset(obj: any, path: string): boolean {
+  if (obj === null || typeof obj !== 'object') return false;
+  if (!path) return false;
+  
   const keys = path.split('.');
   let current = obj;
   
@@ -215,10 +252,14 @@ export function unset(obj: any, path: string): boolean {
  * ```
  */
 export function has(obj: any, path: string): boolean {
+  if (obj === null || obj === undefined) return false;
+  if (!path) return false;
+  
   const keys = path.split('.');
   let current = obj;
   
-  for (const key of keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     if (current === null || current === undefined) {
       return false;
     }
@@ -242,8 +283,12 @@ export function has(obj: any, path: string): boolean {
  * ```
  */
 export function pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
+  if (obj === null || typeof obj !== 'object') return {} as Pick<T, K>;
+  if (!keys || !keys.length) return {} as Pick<T, K>;
+  
   const result = {} as Pick<T, K>;
-  for (const key of keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     if (key in obj) {
       result[key] = obj[key];
     }
@@ -265,8 +310,13 @@ export function pick<T extends Record<string, any>, K extends keyof T>(obj: T, k
  * ```
  */
 export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+  if (obj === null || typeof obj !== 'object') return {} as Omit<T, K>;
+  
   const result = { ...obj };
-  for (const key of keys) {
+  if (!keys || !keys.length) return result;
+  
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     delete result[key];
   }
   return result;
@@ -286,6 +336,9 @@ export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, k
  * ```
  */
 export function filter<T extends Record<string, any>>(obj: T, predicate: (value: T[keyof T], key: keyof T, obj: T) => boolean): Partial<T> {
+  if (obj === null || typeof obj !== 'object') return {} as Partial<T>;
+  if (typeof predicate !== 'function') return { ...obj } as Partial<T>;
+  
   const result = {} as Partial<T>;
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key) && predicate(obj[key], key as keyof T, obj)) {
@@ -309,6 +362,9 @@ export function filter<T extends Record<string, any>>(obj: T, predicate: (value:
  * ```
  */
 export function mapValues<T extends Record<string, any>, U>(obj: T, mapper: (value: T[keyof T], key: keyof T, obj: T) => U): Record<keyof T, U> {
+  if (obj === null || typeof obj !== 'object') return {} as Record<keyof T, U>;
+  if (typeof mapper !== 'function') return { ...obj } as unknown as Record<keyof T, U>;
+  
   const result = {} as Record<keyof T, U>;
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -332,6 +388,9 @@ export function mapValues<T extends Record<string, any>, U>(obj: T, mapper: (val
  * ```
  */
 export function mapKeys<T extends Record<string, any>>(obj: T, keyMap: Record<string, string>): Record<string, T[keyof T]> {
+  if (obj === null || typeof obj !== 'object') return {} as Record<string, T[keyof T]>;
+  if (!keyMap) return { ...obj };
+  
   const result = {} as Record<string, T[keyof T]>;
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -355,6 +414,8 @@ export function mapKeys<T extends Record<string, any>>(obj: T, keyMap: Record<st
  * ```
  */
 export function invert<T extends Record<string, string | number>>(obj: T): Record<string, keyof T> {
+  if (obj === null || typeof obj !== 'object') return {} as Record<string, keyof T>;
+  
   const result = {} as Record<string, keyof T>;
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -380,6 +441,7 @@ export function invert<T extends Record<string, string | number>>(obj: T): Recor
 export function isEmpty(obj: any): boolean {
   if (obj === null || obj === undefined) return true;
   if (Array.isArray(obj) || typeof obj === 'string') return obj.length === 0;
+  if (typeof obj !== 'object') return false;
   return Object.keys(obj).length === 0;
 }
 
@@ -396,6 +458,7 @@ export function isEmpty(obj: any): boolean {
  * ```
  */
 export function keys<T extends Record<string, any>>(obj: T): (keyof T)[] {
+  if (obj === null || typeof obj !== 'object') return [];
   return Object.keys(obj) as (keyof T)[];
 }
 
@@ -412,6 +475,7 @@ export function keys<T extends Record<string, any>>(obj: T): (keyof T)[] {
  * ```
  */
 export function values<T extends Record<string, any>>(obj: T): T[keyof T][] {
+  if (obj === null || typeof obj !== 'object') return [];
   return Object.values(obj) as T[keyof T][];
 }
 
@@ -428,7 +492,8 @@ export function values<T extends Record<string, any>>(obj: T): T[keyof T][] {
  * ```
  */
 export function entries<T extends Record<string, any>>(obj: T): [keyof T, T[keyof T]][] {
+  if (obj === null || typeof obj !== 'object') return [];
   return Object.entries(obj) as [keyof T, T[keyof T]][];
 }
 
-console.log('📦 增强对象工具已加载');
+console.log('📦 增强对象工具已加载 (性能优化版)');
