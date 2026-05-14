@@ -6,7 +6,7 @@ class PerformanceService {
     memoryUsage: 0,
     renderTime: 0,
     blockCount: 0,
-    lastUpdate: Date.now()
+    lastUpdate: Date.now(),
   }
 
   private frameCount = 0
@@ -63,6 +63,14 @@ class PerformanceService {
     this.metrics.blockCount = count
   }
 
+  markFrameRender(): void {
+    this.frameCount++
+  }
+
+  updateMetrics(metrics: Partial<PerformanceMetrics>): void {
+    Object.assign(this.metrics, metrics)
+  }
+
   getMetrics(): PerformanceMetrics {
     return { ...this.metrics }
   }
@@ -104,7 +112,7 @@ Last Update: ${new Date(this.metrics.lastUpdate).toISOString()}
       memoryUsage: 0,
       renderTime: 0,
       blockCount: 0,
-      lastUpdate: Date.now()
+      lastUpdate: Date.now(),
     }
     this.frameCount = 0
     this.lastFpsUpdate = Date.now()

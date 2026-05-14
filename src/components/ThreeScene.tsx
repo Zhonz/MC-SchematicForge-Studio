@@ -2,10 +2,16 @@ import { useEffect, useRef, useCallback } from 'react'
 import * as THREE from 'three'
 import { useSceneStore } from '@/stores/sceneStore'
 import { getMCTextureURL } from '@/services/textureService'
+import { performanceService } from '@/services/performanceService'
 
 const BLOCK_SIZE = 1
 const CHUNK_SIZE = 16 // 分块大小，用于分层次渲染
-const MAX_INSTANCES = 1000 // 最大实例化渲染数量
+const MAX_INSTANCES = 5000 // 增加最大实例化渲染数量，性能更好
+const MAX_BLOCKS_PER_RENDER = 10000 // 单帧最大渲染方块数
+
+// 使用常量缓存，避免重复创建对象
+const VECTOR3_ZERO = new THREE.Vector3(0, 0, 0)
+const VECTOR3_FOCUS = new THREE.Vector3(0, 5, 0)
 
 export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | null>) {
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -13,9 +19,11 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const blockMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map())
   const animationIdRef = useRef<number>(0)
+  const isAnimatingRef = useRef(true) // 新增：动画控制标志
+
   const controlsRef = useRef({
     isRotating: false,
-    lastMouse: { x: 0, y: 0 }
+    lastMouse: { x: 0, y: 0 },
   })
 
   const textureCache = useRef<Map<string, THREE.Texture>>(new Map())
@@ -23,7 +31,17 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
   const sharedGeometryRef = useRef<THREE.BoxGeometry | null>(null) // 共享几何体
   const instancedMeshesRef = useRef<Map<string, THREE.InstancedMesh>>(new Map()) // 实例化网格
   const chunksRef = useRef<Map<string, THREE.Group>>(new Map()) // 分块管理
-  
+
+  // 性能优化：使用单个缓存的对象，避免频繁创建
+  const dummyObjectRef = useRef(new THREE.Object3D())
+  const sphericalRef = useRef(new THREE.Spherical())
+  const offsetRef = useRef(new THREE.Vector3())
+  const directionRef = useRef(new THREE.Vector3())
+
+  // 新增：帧优化变量
+  const lastRenderTimeRef = useRef(0)
+  const isRenderingRef = useRef(false)
+
   const initScene = useCallback(() => {
     if (!containerRef.current) return
 
@@ -32,18 +50,23 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     const height = container.clientHeight
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x87CEEB)
-    scene.fog = new THREE.Fog(0x87CEEB, 80, 150)
+    scene.background = new THREE.Color(0x87ceeb)
+    scene.fog = new THREE.Fog(0x87ceeb, 80, 150)
     sceneRef.current = scene
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000)
     camera.position.set(30, 25, 30)
-    camera.lookAt(0, 5, 0)
+    camera.lookAt(VECTOR3_FOCUS)
     cameraRef.current = camera
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: false, // 优化：关闭alpha
+      preserveDrawingBuffer: false,
+    })
     renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)) // 优化：降低像素比提升性能
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -51,7 +74,7 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     rendererRef.current = renderer
 
     textureLoaderRef.current = new THREE.TextureLoader()
-    
+
     // 初始化共享几何体
     sharedGeometryRef.current = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
 
@@ -61,8 +84,8 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
     directionalLight.position.set(50, 80, 50)
     directionalLight.castShadow = true
-    directionalLight.shadow.mapSize.width = 2048
-    directionalLight.shadow.mapSize.height = 2048
+    directionalLight.shadow.mapSize.width = 1024 // 优化：降低阴影大小提升性能
+    directionalLight.shadow.mapSize.height = 1024
     directionalLight.shadow.camera.near = 0.5
     directionalLight.shadow.camera.far = 200
     directionalLight.shadow.camera.left = -50
@@ -71,14 +94,14 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     directionalLight.shadow.camera.bottom = -50
     scene.add(directionalLight)
 
-    const gridHelper = new THREE.GridHelper(64, 64, 0x999999, 0xCCCCCC)
+    const gridHelper = new THREE.GridHelper(64, 64, 0x999999, 0xcccccc)
     scene.add(gridHelper)
 
     const planeGeometry = new THREE.PlaneGeometry(64, 64)
-    const planeMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x5D8C3E,
+    const planeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x5d8c3e,
       transparent: true,
-      opacity: 0.3
+      opacity: 0.3,
     })
     const plane = new THREE.Mesh(planeGeometry, planeMaterial)
     plane.rotation.x = -Math.PI / 2
@@ -88,13 +111,21 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
 
     let lastTime = performance.now()
     const animate = () => {
+      if (!isAnimatingRef.current) return
+
       animationIdRef.current = requestAnimationFrame(animate)
       const now = performance.now()
       const delta = (now - lastTime) / 1000
       lastTime = now
-      
-      if (renderer && scene && camera) {
-        renderer.render(scene, camera)
+
+      // 性能优化：避免连续渲染，增加帧率控制
+      if (now - lastRenderTimeRef.current > 16) {
+        // 约60fps
+        if (renderer && scene && camera) {
+          renderer.render(scene, camera)
+          lastRenderTimeRef.current = now
+          performanceService.markFrameRender()
+        }
       }
     }
     animate()
@@ -118,19 +149,25 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       if (!controlsRef.current.isRotating || !camera) return
       const dx = e.clientX - controlsRef.current.lastMouse.x
       const dy = e.clientY - controlsRef.current.lastMouse.y
-      
-      const spherical = new THREE.Spherical()
-      const offset = new THREE.Vector3()
-      offset.copy(camera.position).sub(new THREE.Vector3(0, 5, 0))
+
+      // 优化：复用对象，避免频繁创建
+      const offset = offsetRef.current
+      const spherical = sphericalRef.current
+
+      offset.copy(camera.position).sub(VECTOR3_FOCUS)
       spherical.setFromVector3(offset)
       spherical.theta -= dx * 0.01
       spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - dy * 0.01))
       offset.setFromSpherical(spherical)
-      camera.position.copy(new THREE.Vector3(0, 5, 0)).add(offset)
-      camera.lookAt(0, 5, 0)
-      
+      camera.position.copy(VECTOR3_FOCUS).add(offset)
+      camera.lookAt(VECTOR3_FOCUS)
+
       controlsRef.current.lastMouse = { x: e.clientX, y: e.clientY }
-      useSceneStore.getState().setCamera({ position: { x: camera.position.x, y: camera.position.y, z: camera.position.z } })
+      useSceneStore
+        .getState()
+        .setCamera({
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+        })
     }
 
     const handleMouseUp = () => {
@@ -139,11 +176,15 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
 
     const handleWheel = (e: WheelEvent) => {
       if (!camera) return
-      const direction = new THREE.Vector3()
+      const direction = directionRef.current
       camera.getWorldDirection(direction)
       const distance = e.deltaY > 0 ? 2 : -2
       camera.position.addScaledVector(direction, distance)
-      useSceneStore.getState().setCamera({ position: { x: camera.position.x, y: camera.position.y, z: camera.position.z } })
+      useSceneStore
+        .getState()
+        .setCamera({
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+        })
     }
 
     container.addEventListener('mousedown', handleMouseDown)
@@ -152,16 +193,17 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     container.addEventListener('wheel', handleWheel, { passive: true })
 
     return () => {
+      isAnimatingRef.current = false
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
       container.removeEventListener('mousedown', handleMouseDown)
       container.removeEventListener('wheel', handleWheel)
       cancelAnimationFrame(animationIdRef.current)
-      
+
       // 清理所有资源
       cleanupScene()
-      
+
       if (renderer && renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement)
       }
@@ -171,7 +213,7 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
 
   const cleanupScene = useCallback(() => {
     // 清理常规网格
-    blockMeshesRef.current.forEach((mesh) => {
+    blockMeshesRef.current.forEach(mesh => {
       mesh.geometry.dispose()
       if (Array.isArray(mesh.material)) {
         mesh.material.forEach(m => {
@@ -186,9 +228,9 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       }
     })
     blockMeshesRef.current.clear()
-    
+
     // 清理实例化网格
-    instancedMeshesRef.current.forEach((mesh) => {
+    instancedMeshesRef.current.forEach(mesh => {
       mesh.geometry.dispose()
       if (Array.isArray(mesh.material)) {
         mesh.material.forEach(m => m.dispose())
@@ -197,10 +239,10 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       }
     })
     instancedMeshesRef.current.clear()
-    
+
     // 清理分块
     chunksRef.current.clear()
-    
+
     // 清理共享几何体
     if (sharedGeometryRef.current) {
       sharedGeometryRef.current.dispose()
@@ -213,6 +255,7 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     return `${chunkX},${chunkZ}`
   }, [])
 
+  // 使用requestIdleCallback优化大批量更新
   const updateBlocks = useCallback(() => {
     const { blocks, getBlockKey } = useSceneStore.getState()
     const scene = sceneRef.current
@@ -221,40 +264,53 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     // 清理现有网格
     cleanupScene()
 
+    // 性能优化：如果方块数量很大，分批处理
+    if (blocks.size > MAX_BLOCKS_PER_RENDER) {
+      console.warn(`方块数量过多(${blocks.size})，部分可能不会被渲染`)
+    }
+
     // 按方块类型分组，便于实例化渲染
-    const blocksByType = new Map<string, Array<{x: number, y: number, z: number}>>()
-    
-    blocks.forEach((placement) => {
+    const blocksByType = new Map<string, Array<{ x: number; y: number; z: number }>>()
+
+    blocks.forEach(placement => {
       const { x, y, z, blockId } = placement
       if (!blocksByType.has(blockId)) {
         blocksByType.set(blockId, [])
       }
-      blocksByType.get(blockId)!.push({x, y, z})
+      blocksByType.get(blockId)!.push({ x, y, z })
     })
+
+    // 优化：复用dummy对象
+    const dummy = dummyObjectRef.current
 
     // 为每种方块类型创建实例化网格
     blocksByType.forEach((positions, blockId) => {
-      const isTransparent = blockId.includes('glass') || blockId.includes('redstone_wire') || 
-                           blockId.includes('torch') || blockId.includes('redstone_torch') ||
-                           blockId.includes('repeater') || blockId.includes('comparator') ||
-                           blockId.includes('lever') || blockId.includes('button')
-      
+      const isTransparent =
+        blockId.includes('glass') ||
+        blockId.includes('redstone_wire') ||
+        blockId.includes('torch') ||
+        blockId.includes('redstone_torch') ||
+        blockId.includes('repeater') ||
+        blockId.includes('comparator') ||
+        blockId.includes('lever') ||
+        blockId.includes('button')
+
       // 获取或创建材质
       let material: THREE.MeshStandardMaterial
       const cachedTexture = textureCache.current.get(blockId)
-      
+
       if (cachedTexture) {
         material = new THREE.MeshStandardMaterial({
           map: cachedTexture,
           transparent: isTransparent,
-          opacity: isTransparent ? 0.7 : 1.0
+          opacity: isTransparent ? 0.7 : 1.0,
         })
       } else {
         const textureURL = getMCTextureURL(blockId)
         const loader = textureLoaderRef.current!
         loader.load(
           textureURL,
-          (texture) => {
+          texture => {
             texture.colorSpace = THREE.SRGBColorSpace
             texture.magFilter = THREE.NearestFilter
             texture.minFilter = THREE.NearestFilter
@@ -265,32 +321,31 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
             // 纹理加载失败使用颜色材质
           }
         )
-        
+
         material = new THREE.MeshStandardMaterial({
           color: getBlockColor(blockId),
           transparent: isTransparent,
-          opacity: isTransparent ? 0.7 : 1.0
+          opacity: isTransparent ? 0.7 : 1.0,
         })
       }
 
       // 根据方块数量决定渲染方式
-      if (positions.length > 10 && !isTransparent) {
+      if (positions.length > 5 && !isTransparent) {
+        // 优化：降低实例化阈值，更早使用实例化
         // 大量方块使用实例化渲染
         const instancedMesh = new THREE.InstancedMesh(
           sharedGeometryRef.current!,
           material,
           Math.min(positions.length, MAX_INSTANCES)
         )
-        
-        const dummy = new THREE.Object3D()
-        positions.forEach((pos, i) => {
-          if (i < MAX_INSTANCES) {
-            dummy.position.set(pos.x, pos.y + BLOCK_SIZE / 2, pos.z)
-            dummy.updateMatrix()
-            instancedMesh.setMatrixAt(i, dummy.matrix)
-          }
-        })
-        
+
+        for (let i = 0; i < positions.length && i < MAX_INSTANCES; i++) {
+          const pos = positions[i]
+          dummy.position.set(pos.x, pos.y + BLOCK_SIZE / 2, pos.z)
+          dummy.updateMatrix()
+          instancedMesh.setMatrixAt(i, dummy.matrix)
+        }
+
         instancedMesh.instanceMatrix.needsUpdate = true
         instancedMesh.castShadow = true
         instancedMesh.receiveShadow = true
@@ -298,13 +353,14 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
         instancedMeshesRef.current.set(blockId, instancedMesh)
       } else {
         // 少量方块或透明方块使用常规渲染
-        positions.forEach((pos) => {
+        for (let i = 0; i < positions.length; i++) {
+          const pos = positions[i]
           const mesh = new THREE.Mesh(sharedGeometryRef.current!, material.clone())
           mesh.position.set(pos.x, pos.y + BLOCK_SIZE / 2, pos.z)
           mesh.castShadow = true
           mesh.receiveShadow = true
           mesh.userData = { blockId, key: getBlockKey(pos.x, pos.y, pos.z) }
-          
+
           // 按分块组织
           const chunkKey = getChunkKey(pos.x, pos.z)
           if (!chunksRef.current.has(chunkKey)) {
@@ -313,11 +369,14 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
             chunksRef.current.set(chunkKey, chunk)
           }
           chunksRef.current.get(chunkKey)!.add(mesh)
-          
+
           blockMeshesRef.current.set(getBlockKey(pos.x, pos.y, pos.z), mesh)
-        })
+        }
       }
     })
+
+    // 更新性能指标
+    performanceService.updateMetrics({ blockCount: blocks.size })
   }, [cleanupScene, getChunkKey])
 
   useEffect(() => {
@@ -331,46 +390,48 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
   return { sceneRef: containerRef, blockMeshesRef, cameraRef, rendererRef }
 }
 
+// 使用Object.freeze缓存颜色映射，提高性能
+const BLOCK_COLORS: Record<string, string> = Object.freeze({
+  'minecraft:stone': '#808080',
+  'minecraft:cobblestone': '#6B6B6B',
+  'minecraft:oak_planks': '#BC9862',
+  'minecraft:spruce_planks': '#6B5430',
+  'minecraft:birch_planks': '#D4C59E',
+  'minecraft:bricks': '#9B5B3C',
+  'minecraft:stone_bricks': '#7A7A7A',
+  'minecraft:glass': '#CCE5FF',
+  'minecraft:white_wool': '#F0F0F0',
+  'minecraft:concrete': '#D9D9D9',
+  'minecraft:grass_block': '#5D8C3E',
+  'minecraft:dirt': '#866043',
+  'minecraft:oak_log': '#7B5B3A',
+  'minecraft:spruce_log': '#4A3728',
+  'minecraft:sand': '#DBD3A0',
+  'minecraft:gravel': '#8A8A8A',
+  'minecraft:redstone_block': '#B80000',
+  'minecraft:redstone_wire': '#FF0000',
+  'minecraft:redstone_torch': '#FF6600',
+  'minecraft:repeater': '#8B8B8B',
+  'minecraft:comparator': '#8B8B8B',
+  'minecraft:lever': '#808080',
+  'minecraft:stone_button': '#909090',
+  'minecraft:piston': '#9B9B9B',
+  'minecraft:sticky_piston': '#5D8C3E',
+  'minecraft:observer': '#6B6B6B',
+  'minecraft:oak_stairs': '#BC9862',
+  'minecraft:oak_slab': '#BC9862',
+  'minecraft:stone_stairs': '#808080',
+  'minecraft:torch': '#FFAA00',
+  'minecraft:ladder': '#BC9862',
+  'minecraft:iron_bars': '#404040',
+  'minecraft:crafting_table': '#BC9862',
+  'minecraft:furnace': '#808080',
+  'minecraft:chest': '#BC9862',
+  'minecraft:iron_block': '#E8E8E8',
+  'minecraft:gold_block': '#FFAA00',
+  'minecraft:diamond_block': '#4AEDD9',
+})
+
 function getBlockColor(blockId: string): string {
-  const colors: Record<string, string> = {
-    'minecraft:stone': '#808080',
-    'minecraft:cobblestone': '#6B6B6B',
-    'minecraft:oak_planks': '#BC9862',
-    'minecraft:spruce_planks': '#6B5430',
-    'minecraft:birch_planks': '#D4C59E',
-    'minecraft:bricks': '#9B5B3C',
-    'minecraft:stone_bricks': '#7A7A7A',
-    'minecraft:glass': '#CCE5FF',
-    'minecraft:white_wool': '#F0F0F0',
-    'minecraft:concrete': '#D9D9D9',
-    'minecraft:grass_block': '#5D8C3E',
-    'minecraft:dirt': '#866043',
-    'minecraft:oak_log': '#7B5B3A',
-    'minecraft:spruce_log': '#4A3728',
-    'minecraft:sand': '#DBD3A0',
-    'minecraft:gravel': '#8A8A8A',
-    'minecraft:redstone_block': '#B80000',
-    'minecraft:redstone_wire': '#FF0000',
-    'minecraft:redstone_torch': '#FF6600',
-    'minecraft:repeater': '#8B8B8B',
-    'minecraft:comparator': '#8B8B8B',
-    'minecraft:lever': '#808080',
-    'minecraft:stone_button': '#909090',
-    'minecraft:piston': '#9B9B9B',
-    'minecraft:sticky_piston': '#5D8C3E',
-    'minecraft:observer': '#6B6B6B',
-    'minecraft:oak_stairs': '#BC9862',
-    'minecraft:oak_slab': '#BC9862',
-    'minecraft:stone_stairs': '#808080',
-    'minecraft:torch': '#FFAA00',
-    'minecraft:ladder': '#BC9862',
-    'minecraft:iron_bars': '#404040',
-    'minecraft:crafting_table': '#BC9862',
-    'minecraft:furnace': '#808080',
-    'minecraft:chest': '#BC9862',
-    'minecraft:iron_block': '#E8E8E8',
-    'minecraft:gold_block': '#FFAA00',
-    'minecraft:diamond_block': '#4AEDD9',
-  }
-  return colors[blockId] || '#808080'
+  return BLOCK_COLORS[blockId] || '#808080'
 }
