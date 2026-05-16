@@ -27,10 +27,23 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
   })
 
   const textureCache = useRef<Map<string, THREE.Texture>>(new Map())
+  const materialCache = useRef<Map<string, THREE.MeshStandardMaterial>>(new Map()) // 新增：材质缓存
   const textureLoaderRef = useRef<THREE.TextureLoader | null>(null)
   const sharedGeometryRef = useRef<THREE.BoxGeometry | null>(null) // 共享几何体
   const instancedMeshesRef = useRef<Map<string, THREE.InstancedMesh>>(new Map()) // 实例化网格
   const chunksRef = useRef<Map<string, THREE.Group>>(new Map()) // 分块管理
+
+  // 透明方块类型缓存
+  const TRANSPARENT_BLOCKS = new Set([
+    'glass',
+    'redstone_wire',
+    'torch',
+    'redstone_torch',
+    'repeater',
+    'comparator',
+    'lever',
+    'button',
+  ])
 
   // 性能优化：使用单个缓存的对象，避免频繁创建
   const dummyObjectRef = useRef(new THREE.Object3D())
@@ -163,11 +176,9 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       camera.lookAt(VECTOR3_FOCUS)
 
       controlsRef.current.lastMouse = { x: e.clientX, y: e.clientY }
-      useSceneStore
-        .getState()
-        .setCamera({
-          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-        })
+      useSceneStore.getState().setCamera({
+        position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+      })
     }
 
     const handleMouseUp = () => {
@@ -180,11 +191,9 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
       camera.getWorldDirection(direction)
       const distance = e.deltaY > 0 ? 2 : -2
       camera.position.addScaledVector(direction, distance)
-      useSceneStore
-        .getState()
-        .setCamera({
-          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-        })
+      useSceneStore.getState().setCamera({
+        position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+      })
     }
 
     container.addEventListener('mousedown', handleMouseDown)
@@ -247,6 +256,13 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
     if (sharedGeometryRef.current) {
       sharedGeometryRef.current.dispose()
     }
+
+    // 清理材质缓存
+    materialCache.current.forEach(material => {
+      if (material.map) material.map.dispose()
+      material.dispose()
+    })
+    materialCache.current.clear()
   }, [])
 
   const getChunkKey = useCallback((x: number, z: number) => {
@@ -285,48 +301,48 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
 
     // 为每种方块类型创建实例化网格
     blocksByType.forEach((positions, blockId) => {
-      const isTransparent =
-        blockId.includes('glass') ||
-        blockId.includes('redstone_wire') ||
-        blockId.includes('torch') ||
-        blockId.includes('redstone_torch') ||
-        blockId.includes('repeater') ||
-        blockId.includes('comparator') ||
-        blockId.includes('lever') ||
-        blockId.includes('button')
+      // 优化：使用Set判断透明方块
+      const isTransparent = Array.from(TRANSPARENT_BLOCKS).some(type => blockId.includes(type))
 
-      // 获取或创建材质
-      let material: THREE.MeshStandardMaterial
-      const cachedTexture = textureCache.current.get(blockId)
+      // 优化：使用材质缓存
+      const materialKey = `${blockId}-${isTransparent ? 't' : 'o'}`
+      let material = materialCache.current.get(materialKey)
 
-      if (cachedTexture) {
-        material = new THREE.MeshStandardMaterial({
-          map: cachedTexture,
-          transparent: isTransparent,
-          opacity: isTransparent ? 0.7 : 1.0,
-        })
-      } else {
-        const textureURL = getMCTextureURL(blockId)
-        const loader = textureLoaderRef.current!
-        loader.load(
-          textureURL,
-          texture => {
-            texture.colorSpace = THREE.SRGBColorSpace
-            texture.magFilter = THREE.NearestFilter
-            texture.minFilter = THREE.NearestFilter
-            textureCache.current.set(blockId, texture)
-          },
-          undefined,
-          () => {
-            // 纹理加载失败使用颜色材质
-          }
-        )
+      if (!material) {
+        const cachedTexture = textureCache.current.get(blockId)
 
-        material = new THREE.MeshStandardMaterial({
-          color: getBlockColor(blockId),
-          transparent: isTransparent,
-          opacity: isTransparent ? 0.7 : 1.0,
-        })
+        if (cachedTexture) {
+          material = new THREE.MeshStandardMaterial({
+            map: cachedTexture,
+            transparent: isTransparent,
+            opacity: isTransparent ? 0.7 : 1.0,
+          })
+        } else {
+          const textureURL = getMCTextureURL(blockId)
+          const loader = textureLoaderRef.current!
+          loader.load(
+            textureURL,
+            texture => {
+              texture.colorSpace = THREE.SRGBColorSpace
+              texture.magFilter = THREE.NearestFilter
+              texture.minFilter = THREE.NearestFilter
+              textureCache.current.set(blockId, texture)
+            },
+            undefined,
+            () => {
+              // 纹理加载失败使用颜色材质
+            }
+          )
+
+          material = new THREE.MeshStandardMaterial({
+            color: getBlockColor(blockId),
+            transparent: isTransparent,
+            opacity: isTransparent ? 0.7 : 1.0,
+          })
+        }
+
+        // 缓存材质
+        materialCache.current.set(materialKey, material)
       }
 
       // 根据方块数量决定渲染方式
@@ -355,7 +371,7 @@ export function useThreeScene(containerRef: React.RefObject<HTMLDivElement | nul
         // 少量方块或透明方块使用常规渲染
         for (let i = 0; i < positions.length; i++) {
           const pos = positions[i]
-          const mesh = new THREE.Mesh(sharedGeometryRef.current!, material.clone())
+          const mesh = new THREE.Mesh(sharedGeometryRef.current!, material)
           mesh.position.set(pos.x, pos.y + BLOCK_SIZE / 2, pos.z)
           mesh.castShadow = true
           mesh.receiveShadow = true

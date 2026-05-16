@@ -1,6 +1,6 @@
 {
   "name": "schematicforge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MC投影工坊 - 新一代 Minecraft 智能投影生成与编辑工具",
   "private": true,
   "type": "module",
