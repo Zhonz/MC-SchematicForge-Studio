@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
+  base: './',
   plugins: [
     react({
       // 优化React的编译，提升开发体验
