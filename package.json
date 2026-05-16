@@ -1,6 +1,6 @@
 {
   "name": "schematicforge",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "MC投影工坊 - 新一代 Minecraft 智能投影生成与编辑工具",
   "private": true,
   "type": "module",
@@ -18,7 +18,8 @@
     "prepare": "husky install",
     "pre-commit": "lint-staged",
     "deploy": "bash deploy.sh",
-    "quick-push": "bash quick-push.sh"
+    "quick-push": "bash quick-push.sh",
+    "bump": "node scripts/bump-version.cjs"
   },
   "dependencies": {
     "@types/three": "^0.170.0",
